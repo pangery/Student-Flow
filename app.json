@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "StudentFlow",
+    "slug": "studentflow",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "studentflow",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.studentflow.app"
+    },
+    "android": {
+      "package": "com.studentflow.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#08152F"
+      }
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-font",
+      "expo-status-bar",
+      "expo-web-browser",
+      "expo-notifications"
+    ]
+  }
+}

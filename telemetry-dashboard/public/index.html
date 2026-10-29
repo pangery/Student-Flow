@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StudentFlow · Myšlenková mapa & Relační toky dat (Plus4U OIDC)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Top Navigation Bar -->
+    <header class="top-header">
+      <div class="brand-group">
+        <div class="brand-badge">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2L2 7L12 12L22 7L12 2Z" fill="#38BDF8"/>
+            <path d="M2 17L12 22L22 17" stroke="#38BDF8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M2 12L12 17L22 12" stroke="#818CF8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div>
+          <div class="brand-title">StudentFlow <span class="brand-sub">Myšlenková mapa</span></div>
+          <div class="brand-tagline">Relační architektura toku dat · Plus4U OIDC · MyTerritory · Diář</div>
+        </div>
+      </div>
+
+      <!-- Navigation View Tabs -->
+      <nav class="view-nav-tabs">
+        <button class="nav-tab active" data-tab="simulator">
+          <span class="tab-icon">📱</span> Simulátor & Živá Roadmapa
+        </button>
+        <button class="nav-tab" data-tab="mindmap">
+          <span class="tab-icon">🧠</span> Myšlenková mapa
+        </button>
+        <button class="nav-tab" data-tab="schedule">
+          <span class="tab-icon">📅</span> Rozvrh & Den v týdnu
+        </button>
+        <button class="nav-tab" data-tab="tasks">
+          <span class="tab-icon">⚡</span> Úkoly studenta
+        </button>
+        <button class="nav-tab" data-tab="network">
+          <span class="tab-icon">🔍</span> Síťový inspektor URI
+        </button>
+      </nav>
+
+      <!-- Live Clock & Weekday Indicator -->
+      <div class="live-clock-card">
+        <div class="pulse-dot"></div>
+        <div class="clock-details">
+          <span id="current-day-name" class="day-highlight">Úterý</span>
+          <span id="current-full-date" class="date-muted">27. října 2026</span>
+          <span id="current-time-str" class="time-bold">09:15:00</span>
+        </div>
+      </div>
+
+      <!-- Quick Actions -->
+      <div class="header-actions">
+        <div id="connection-pill" class="connection-status-pill connected">
+          <span class="status-indicator live"></span>
+          <span id="connection-status-text">Mobilní spojení aktivní</span>
+        </div>
+        <button id="btn-trigger-login" class="btn-primary glow-pulse">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          Přihlásit přes Plus4U (Spustit tok)
+        </button>
+      </div>
+    </header>
+
+    <!-- TAB 0: INTERACTIVE IPHONE SIMULATOR & REAL-TIME REQUEST ROADMAP -->
+    <div id="tab-simulator" class="tab-content active">
+      <div class="simulator-layout">
+        <!-- LEFT: Ultra-Realistic iPhone 17 Pro Mockup -->
+        <div class="mockup-side">
+          <div class="mockup-header-info">
+            <span class="mockup-chip"><span class="pulse-dot"></span> Interaktivní klient</span>
+            <span class="mockup-title">iPhone 17 Pro · StudentFlow</span>
+          </div>
+
+          <div class="iphone-frame">
+            <div class="iphone-side-button btn-power"></div>
+            <div class="iphone-side-button btn-volume-up"></div>
+            <div class="iphone-side-button btn-volume-down"></div>
+            <div class="iphone-side-button btn-action"></div>
+
+            <div class="iphone-screen">
+              <!-- Dynamic Island -->
+              <div class="dynamic-island" id="sim-dynamic-island">
+                <div class="island-camera"></div>
+                <div class="island-sensor"></div>
+                <div class="island-status-pill" id="sim-island-status">
+                  <span class="island-icon" id="sim-island-icon">🔒</span>
+                  <span class="island-text" id="sim-island-text">StudentFlow</span>
+                </div>
+              </div>
+
+              <!-- iOS Status Bar -->
+              <div class="sim-status-bar">
+                <span class="sim-time" id="sim-status-time">09:42</span>
+                <div class="sim-status-icons">
+                  <span class="sim-cellular">5G</span>
+                  <span class="sim-wifi">📶</span>
+                  <span class="sim-battery">🔋 98%</span>
+                </div>
+              </div>
+
+              <!-- SCREEN 1: WELCOME & LOGIN PROMPT -->
+              <div class="sim-screen active" id="sim-screen-welcome">
+                <div class="sim-welcome-hero">
+                  <div class="sim-logo-ring">
+                    <svg width="38" height="38" viewBox="0 0 24 24" fill="none">
+                      <path d="M12 2L2 7L12 12L22 7L12 2Z" fill="#38BDF8"/>
+                      <path d="M2 17L12 22L22 17" stroke="#38BDF8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                      <path d="M2 12L12 17L22 12" stroke="#818CF8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </div>
+                  <span class="sim-uni-tag">UNICORN UNIVERSITY · PRAHA</span>
+                  <h2 class="sim-app-title">StudentFlow</h2>
+                  <p class="sim-app-subtitle">Rozvrh, diář a úkoly synchronizované přímo z Plus4U v reálném čase.</p>
+                </div>
+
+                <!-- Account Selector -->
+                <div class="sim-account-picker">
+                  <label class="sim-picker-label">Zvolte studentský profil pro přihlášení:</label>
+                  <div class="sim-account-cards">
+                    <div class="sim-account-card selected" id="acc-jan">
+                      <div class="sim-avatar">JG</div>
+                      <div class="sim-acc-meta">
+                        <span class="sim-acc-name">Jan Gergel</span>
+                        <span class="sim-acc-id">25-8321-1 · Softwarový vývoj</span>
+                      </div>
+                      <span class="sim-check">✓</span>
+                    </div>
+                    <div class="sim-account-card" id="acc-tereza">
+                      <div class="sim-avatar" style="background: linear-gradient(135deg, #EC4899, #8B5CF6);">TN</div>
+                      <div class="sim-acc-meta">
+                        <span class="sim-acc-name">Tereza Nováková</span>
+                        <span class="sim-acc-id">25-1042-1 · Datová analytika</span>
+                      </div>
+                      <span class="sim-check" style="display:none;">✓</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="sim-action-area">
+                  <button id="sim-btn-open-sso" class="sim-btn-primary glow-pulse">
+                    <span class="btn-icon">🔑</span>
+                    Přihlásit se přes Plus4U
+                  </button>
+                  <p class="sim-secure-note">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                    Zabezpečeno přes ASWebAuthenticationSession
+                  </p>
+                </div>
+              </div>
+
+              <!-- SCREEN 2: SAFARI SSO BOTTOM SHEET MODAL -->
+              <div class="sim-screen" id="sim-screen-sso">
+                <div class="sim-sso-sheet">
+                  <div class="sim-sheet-handle"></div>
+                  <div class="sim-safari-bar">
+                    <button class="sim-safari-cancel" id="sim-sso-cancel">Zrušit</button>
+                    <div class="sim-safari-url">
+                      <span class="sim-lock-icon">🔒</span>
+                      <span>uuidentity.plus4u.net</span>
+                    </div>
+                    <button class="sim-safari-reload">↻</button>
+                  </div>
+
+                  <div class="sim-sso-body">
+                    <div class="sim-plus4u-brand">
+                      <div class="plus4u-circle-logo">u<sup>u</sup></div>
+                      <div>
+                        <div class="plus4u-brand-title">Plus4U Identity Provider</div>
+                        <div class="plus4u-brand-sub">OIDC Single Sign-On Authority</div>
+                      </div>
+                    </div>
+
+                    <div class="sim-form-group">
+                      <label>Přístupový kód 1 (uuIdentity):</label>
+                      <input type="text" id="sim-input-identity" value="25-8321-1" class="sim-input" readonly />
+                    </div>
+
+                    <div class="sim-form-group">
+                      <label>Heslo / Přístupový kód 2:</label>
+                      <input type="password" id="sim-input-password" value="SuperSecretPassword2026!" class="sim-input" readonly />
+                    </div>
+
+                    <div class="sim-quick-actions">
+                      <button class="sim-btn-pill" id="sim-btn-autofill">⚡ Předvyplněno pro demo</button>
+                    </div>
+
+                    <button id="sim-btn-submit-sso" class="sim-btn-plus4u">
+                      <span>Ověřit a přihlásit se</span>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <polyline points="9 18 15 12 9 6"></polyline>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- SCREEN 3: REAL-TIME HANDSHAKE & LOADER -->
+              <div class="sim-screen" id="sim-screen-loading">
+                <div class="sim-loader-wrap">
+                  <div class="sim-spinner-ring">
+                    <div class="spinner-core"></div>
+                  </div>
+                  <div class="sim-loader-title" id="sim-loader-stage-title">Ověřování identity...</div>
+                  <div class="sim-loader-detail" id="sim-loader-stage-desc">Zpracování autorizačního kódu na lokálním socketu</div>
+
+                  <div class="sim-progress-track">
+                    <div class="sim-progress-bar" id="sim-loader-progress-fill" style="width: 25%;"></div>
+                  </div>
+                  <span class="sim-progress-pct" id="sim-loader-progress-text">25% dokončeno</span>
+                </div>
+              </div>
+
+              <!-- SCREEN 4: AUTHENTICATED DASHBOARD -->
+              <div class="sim-screen" id="sim-screen-dashboard">
+                <!-- In-app Header -->
+                <div class="sim-dash-header">
+                  <div class="sim-user-row">
+                    <div class="sim-user-avatar" id="sim-dash-avatar">JG</div>
+                    <div class="sim-user-info">
+                      <div class="sim-user-name" id="sim-dash-name">Jan Gergel</div>
+                      <div class="sim-user-id" id="sim-dash-id">ID: 25-8321-1 · Unicorn Univ.</div>
+                    </div>
+                    <span class="sim-online-badge">● Plus4U</span>
+                  </div>
+
+                  <!-- Date & Semester Tag -->
+                  <div class="sim-date-tag-row">
+                    <span class="sim-date-highlight" id="sim-dash-today-label">ÚTERÝ 27. ŘÍJNA</span>
+                    <span class="sim-sem-tag">ZS 2026/27</span>
+                  </div>
+
+                  <!-- Mini Stats Grid -->
+                  <div class="sim-mini-stats">
+                    <div class="sim-stat-box">
+                      <span class="sim-stat-num" id="sim-stat-classes">4</span>
+                      <span class="sim-stat-lbl">hodiny dnes</span>
+                    </div>
+                    <div class="sim-stat-box">
+                      <span class="sim-stat-num" id="sim-stat-tasks">4</span>
+                      <span class="sim-stat-lbl">úkoly</span>
+                    </div>
+                    <div class="sim-stat-box">
+                      <span class="sim-stat-num">2</span>
+                      <span class="sim-stat-lbl">zkoušky</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Scrollable Body inside phone -->
+                <div class="sim-dash-body" id="sim-dash-scroll-body">
+                  <!-- Ongoing Class Alert -->
+                  <div class="sim-ongoing-card" id="sim-ongoing-widget">
+                    <div class="sim-ongoing-top">
+                      <span class="pulse-dot"></span>
+                      <span class="sim-ongoing-lbl">PRÁVĚ PROBÍHÁ</span>
+                      <span class="sim-ongoing-time" id="sim-dash-ongoing-time">do 10:10</span>
+                    </div>
+                    <div class="sim-ongoing-name" id="sim-dash-ongoing-name">Backendové systémy (Backend)</div>
+                    <div class="sim-ongoing-loc" id="sim-dash-ongoing-loc">📍 KCD4 1.01 · Ing. Michal Novák</div>
+                    <div class="sim-bar-wrap">
+                      <div class="sim-bar-fill" id="sim-dash-ongoing-fill" style="width: 55%;"></div>
+                    </div>
+                  </div>
+
+                  <!-- Timetable List -->
+                  <div class="sim-section-header">
+                    <span>Dnešní výuka</span>
+                    <span class="sim-badge-count" id="sim-today-classes-count">4 předměty</span>
+                  </div>
+                  <div class="sim-classes-list" id="sim-dash-classes-list"></div>
+
+                  <!-- Tasks Preview -->
+                  <div class="sim-section-header" style="margin-top: 14px;">
+                    <span>Aktuální úkoly</span>
+                    <span class="sim-badge-count" id="sim-today-tasks-count">4 úkoly</span>
+                  </div>
+                  <div class="sim-tasks-preview" id="sim-dash-tasks-list"></div>
+
+                  <!-- Logout Button -->
+                  <div style="padding: 16px 0 24px;">
+                    <button class="sim-btn-logout" id="sim-btn-logout">
+                      <span>Odhlásit a resetovat simulátor</span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- iOS Home Bar Indicator -->
+                <div class="sim-home-bar"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT: Real-time Request Roadmap & Waterfall Inspector -->
+        <div class="roadmap-side">
+          <div class="roadmap-card">
+            <!-- Header Controls -->
+            <div class="roadmap-header">
+              <div>
+                <div class="roadmap-title-row">
+                  <span class="roadmap-badge-dot"></span>
+                  <h2 class="roadmap-title">Živá Roadmapa Požadavků v Reálném Čase</h2>
+                </div>
+                <p class="roadmap-desc">Sledování toku dat, handshake parametrů, síťových latencí a tokenů krok za krokem</p>
+              </div>
+
+              <div class="roadmap-actions-row">
+                <div class="speed-toggle">
+                  <span class="speed-label">Rychlost:</span>
+                  <button class="speed-btn" data-speed="0.5">0.5×</button>
+                  <button class="speed-btn active" data-speed="1">1×</button>
+                  <button class="speed-btn" data-speed="2">2×</button>
+                </div>
+                <button class="btn-primary" id="btn-run-roadmap-flow">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                  </svg>
+                  Spustit flow z webu
+                </button>
+              </div>
+            </div>
+
+            <!-- Roadmap Waterfall Cards -->
+            <div class="roadmap-steps-list" id="roadmap-steps-list">
+              <!-- Dynamically populated from JS -->
+            </div>
+
+            <!-- Live Terminal & Raw Wire Output -->
+            <div class="live-terminal-panel">
+              <div class="terminal-header">
+                <div class="terminal-dots">
+                  <span class="t-dot red"></span>
+                  <span class="t-dot yellow"></span>
+                  <span class="t-dot green"></span>
+                </div>
+                <span class="terminal-title">studentflow-wire-inspector (live stream)</span>
+                <button class="terminal-clear" id="btn-clear-terminal">Vyčistit</button>
+              </div>
+              <div class="terminal-body" id="roadmap-terminal-body">
+                <div class="term-line"><span class="term-time">[09:40:00]</span> <span class="term-cyan">[READY]</span> StudentFlow Client připraven. Klepněte na 'Přihlásit se přes Plus4U' v iPhonu vlevo...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 1: INTERACTIVE MIND MAP & RELATIONAL DATA FLOW -->
+    <div id="tab-mindmap" class="tab-content">
+      <div class="mindmap-container">
+        <!-- Floating Canvas Toolbar -->
+        <div class="canvas-toolbar">
+          <div class="playback-controls">
+            <button id="btn-step-prev" class="tool-btn" title="Předchozí krok">◀ Krok zpět</button>
+            <button id="btn-step-play" class="tool-btn active-play" title="Spustit/Pozastavit animaci">
+              <span id="play-icon">▶</span> Přehrát tok
+            </button>
+            <button id="btn-step-next" class="tool-btn" title="Další krok">Další krok ▶</button>
+          </div>
+          <div class="pipeline-progress-text" id="mindmap-status-pill">
+            Krok 0 z 8: Připraveno ke spuštění
+          </div>
+          <div class="canvas-zoom-group">
+            <button id="btn-zoom-in" class="tool-btn" title="Přiblížit">+</button>
+            <button id="btn-zoom-reset" class="tool-btn" title="Vycentrovat">100%</button>
+            <button id="btn-zoom-out" class="tool-btn" title="Oddálit">−</button>
+          </div>
+        </div>
+
+        <!-- Mind Map Viewport (SVG lines + HTML floating cards) -->
+        <div class="mindmap-viewport" id="mindmap-viewport">
+          <svg class="connections-svg" id="connections-svg">
+            <defs>
+              <linearGradient id="flow-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.8" />
+                <stop offset="50%" stop-color="#818CF8" stop-opacity="1" />
+                <stop offset="100%" stop-color="#34D399" stop-opacity="0.9" />
+              </linearGradient>
+              <filter id="glow-filter" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="4" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+            <g id="svg-paths-layer"></g>
+            <g id="svg-particles-layer"></g>
+          </svg>
+
+          <!-- Nodes rendered inside this interactive container -->
+          <div class="nodes-layer" id="nodes-layer">
+            <!-- Dynamically populated from JS -->
+          </div>
+        </div>
+
+        <!-- Node Details Side Drawer -->
+        <aside class="node-inspector-drawer" id="node-inspector" style="display: none;">
+          <div class="drawer-header">
+            <div class="drawer-icon-wrap" id="drawer-node-icon">🌐</div>
+            <div class="drawer-title-wrap">
+              <h3 class="drawer-title" id="drawer-node-title">Název uzlu</h3>
+              <span class="drawer-badge" id="drawer-node-type">Komponenta</span>
+            </div>
+            <button class="drawer-close" id="drawer-close-btn">&times;</button>
+          </div>
+
+          <div class="drawer-body">
+            <div class="drawer-section">
+              <label class="drawer-label">Koncový URI endpoint:</label>
+              <div class="drawer-uri-box" id="drawer-node-uri">https://...</div>
+            </div>
+
+            <div class="drawer-section">
+              <label class="drawer-label">Popis & Role v toku dat:</label>
+              <p class="drawer-desc" id="drawer-node-desc">Popis uzlu...</p>
+            </div>
+
+            <div class="drawer-section">
+              <label class="drawer-label">Relační vazby:</label>
+              <div class="drawer-relations">
+                <div class="rel-row">
+                  <span class="rel-label">Vstupuje z:</span>
+                  <span class="rel-val" id="drawer-node-inputs">Mobilní aplikace</span>
+                </div>
+                <div class="rel-row">
+                  <span class="rel-label">Odtéká do:</span>
+                  <span class="rel-val" id="drawer-node-outputs">Plus4UPeople</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="drawer-section">
+              <label class="drawer-label">Předávaná data (Payload / Claims):</label>
+              <pre class="drawer-code" id="drawer-node-payload">{}</pre>
+            </div>
+
+            <div class="drawer-section">
+              <label class="drawer-label">Implementace v React Native:</label>
+              <div class="code-ref-box" id="drawer-node-coderef">src/services/plus4uOidc.ts</div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <!-- TAB 2: SCHEDULE & DAY-OF-WEEK TRACKER -->
+    <div id="tab-schedule" class="tab-content">
+      <div class="schedule-grid-wrap">
+        <section class="panel panel-schedule">
+          <div class="panel-header">
+            <div class="panel-title-wrap">
+              <span class="panel-icon">📅</span>
+              <div>
+                <h2 class="panel-title">Trackování dne v týdnu & Dnešní hodiny žáka</h2>
+                <p class="panel-desc">Algoritmus mapování `startDate.getDay() + 1` (Pondělí=2 až Pátek=6) a aktivní hodina</p>
+              </div>
+            </div>
+            <div class="weekday-switch" id="weekday-selector"></div>
+          </div>
+
+          <!-- Ongoing Lesson Banner -->
+          <div class="ongoing-hero-card" id="ongoing-hero">
+            <div class="ongoing-badge">
+              <span class="pulse-dot"></span>
+              PRÁVĚ PROBÍHÁ
+            </div>
+            <div class="ongoing-content">
+              <div class="ongoing-sub-title" id="ongoing-title">Vývoj mobilních aplikací v React Native</div>
+              <div class="ongoing-meta">
+                <span id="ongoing-time" class="meta-tag">10:00 – 11:30</span>
+                <span id="ongoing-room" class="meta-tag">Laboratoř 1.4</span>
+                <span id="ongoing-teacher" class="meta-tag">Mgr. Tomáš Dvořák</span>
+              </div>
+              <div class="progress-bar-wrap">
+                <div class="progress-fill" id="ongoing-progress" style="width: 45%;"></div>
+              </div>
+              <div class="progress-labels">
+                <span id="ongoing-elapsed">Zbývá 48 minut</span>
+                <span id="ongoing-percent">45% odcvičeno</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="schedule-timeline" id="schedule-timeline"></div>
+        </section>
+
+        <!-- Right Side: Algorithm Explanation Card -->
+        <section class="panel panel-info">
+          <div class="panel-header">
+            <div class="panel-title-wrap">
+              <span class="panel-icon">🧮</span>
+              <div>
+                <h3 class="panel-title">Jak funguje výpočet rozvrhu</h3>
+                <p class="panel-desc">Mapování surových dat z Plus4U diáře do StudentFlow</p>
+              </div>
+            </div>
+          </div>
+          <div class="algo-steps">
+            <div class="algo-step-item">
+              <div class="algo-num">1</div>
+              <div>
+                <strong>Časové rozmezí dotazu:</strong>
+                <p>Načítá se ±60 dní od aktuálního data z `uuDwRecord/listMyActiveDiaryRecords`.</p>
+              </div>
+            </div>
+            <div class="algo-step-item">
+              <div class="algo-num">2</div>
+              <div>
+                <strong>Výpočet dne v týdnu:</strong>
+                <p>`const weekday = startDate.getDay() + 1;` (Po=2, Út=3, St=4, Čt=5, Pá=6).</p>
+              </div>
+            </div>
+            <div class="algo-step-item">
+              <div class="algo-num">3</div>
+              <div>
+                <strong>Výpočet minut a délky:</strong>
+                <p>`startMinutes = hours * 60 + minutes`. Hodiny s délkou pod 25 min jsou ignorovány.</p>
+              </div>
+            </div>
+            <div class="algo-step-item">
+              <div class="algo-num">4</div>
+              <div>
+                <strong>Deduplikace předmětů:</strong>
+                <p>Klíč `${weekday}_${startMinutes}_${cleanName}` zaručuje, že se předmět nezobrazí dvakrát.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <!-- TAB 3: TASKS & DEADLINES -->
+    <div id="tab-tasks" class="tab-content">
+      <section class="panel panel-tasks">
+        <div class="panel-header">
+          <div class="panel-title-wrap">
+            <span class="panel-icon">⚡</span>
+            <div>
+              <h2 class="panel-title">Trackované úkoly a deadliny studenta</h2>
+              <p class="panel-desc">Automaticky vyfiltrováno z uuDwRecord podle klíčových slov a stavů</p>
+            </div>
+          </div>
+          <div class="task-count-badge" id="task-count-badge">4 úkoly</div>
+        </div>
+
+        <div class="tasks-scroll-list" id="tasks-list"></div>
+      </section>
+    </div>
+
+    <!-- TAB 4: RAW NETWORK INSPECTOR -->
+    <div id="tab-network" class="tab-content">
+      <section class="panel panel-network">
+        <div class="panel-header">
+          <div class="panel-title-wrap">
+            <span class="panel-icon">🔍</span>
+            <div>
+              <h2 class="panel-title">Živý síťový protokol URI požadavků</h2>
+              <p class="panel-desc">Real-time odchyt všech HTTP dotazů z mobilní aplikace</p>
+            </div>
+          </div>
+          <button id="btn-clear-logs" class="btn-secondary">Vyčistit protokol</button>
+        </div>
+
+        <div class="network-feed" id="network-feed"></div>
+      </section>
+    </div>
+
+    <!-- Detail JSON Modal -->
+    <div class="modal-backdrop" id="payload-modal" style="display: none;">
+      <div class="modal-window">
+        <div class="modal-header">
+          <div>
+            <h3 class="modal-title" id="modal-uri-title">Detail HTTP požadavku</h3>
+            <span class="modal-uri" id="modal-uri-text">https://...</span>
+          </div>
+          <button class="modal-close" id="modal-close-btn">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-meta-row" id="modal-meta-row"></div>
+          <pre class="json-code" id="modal-json-content"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
