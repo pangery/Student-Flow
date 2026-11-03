@@ -110,7 +110,7 @@ export function AdaptiveTabBar({ state, descriptors, navigation }: BottomTabBarP
     );
   }
 
-  // --- Android Luxury Navigation Bar ---
+  // Navigace pro Android
   return (
     <View
       style={[

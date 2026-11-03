@@ -2,6 +2,8 @@
 
 Multiplatformní studentská aplikace pro studenty Unicorn University postavená na React Native, Expo, TypeScriptu a Electronu pro **iOS, Android, macOS, Windows i Linux**.
 
+Kompletní technický popis architektury, datových toků a bezpečnostního modelu najdete v souboru **[DOKUMENTACE.md](DOKUMENTACE.md)**.
+
 ---
 
 ## Podporované platformy a spuštění
