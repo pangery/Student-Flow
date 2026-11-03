@@ -1,9 +1,90 @@
-const { app, BrowserWindow, shell, Menu } = require('electron');
+// If executed by Node directly or inside an environment where ELECTRON_RUN_AS_NODE=1 is inherited,
+// re-spawn with the real Electron runtime.
+const electronPkg = require('electron');
+if (typeof electronPkg === 'string') {
+  const { spawn } = require('node:child_process');
+  const cleanEnv = { ...process.env };
+  delete cleanEnv.ELECTRON_RUN_AS_NODE;
+  const child = spawn(electronPkg, [__filename, ...process.argv.slice(2)], {
+    env: cleanEnv,
+    stdio: 'inherit',
+  });
+  child.on('exit', (code) => process.exit(code ?? 0));
+  return;
+}
+
+const { app, BrowserWindow, shell, Menu } = electronPkg;
 const path = require('node:path');
+const http = require('node:http');
+const fs = require('node:fs');
 
 let mainWindow;
+let localStaticServer;
+let localServerPort = 0;
 
-function createWindow() {
+const MIME_TYPES = {
+  '.html': 'text/html',
+  '.js': 'application/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.svg': 'image/svg+xml',
+  '.ttf': 'font/ttf',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+};
+
+function startLocalStaticServer(distDir) {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer((req, res) => {
+      try {
+        const parsedUrl = new URL(req.url, 'http://127.0.0.1');
+        let pathname = decodeURIComponent(parsedUrl.pathname);
+        if (pathname === '/') pathname = '/index.html';
+        const filePath = path.join(distDir, pathname);
+
+        if (!filePath.startsWith(distDir)) {
+          res.statusCode = 403;
+          return res.end('Forbidden');
+        }
+
+        fs.stat(filePath, (err, stats) => {
+          if (err || !stats.isFile()) {
+            // SPA fallback: return index.html
+            fs.readFile(path.join(distDir, 'index.html'), (err2, data) => {
+              if (err2) {
+                res.statusCode = 404;
+                return res.end('Not found');
+              }
+              res.setHeader('Content-Type', 'text/html; charset=utf-8');
+              res.end(data);
+            });
+            return;
+          }
+
+          const ext = path.extname(filePath).toLowerCase();
+          const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+          res.setHeader('Content-Type', contentType);
+          fs.createReadStream(filePath).pipe(res);
+        });
+      } catch (e) {
+        res.statusCode = 500;
+        res.end('Server error');
+      }
+    });
+
+    server.listen(0, '127.0.0.1', () => {
+      const port = server.address().port;
+      resolve({ port, server });
+    });
+
+    server.on('error', reject);
+  });
+}
+
+async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 820,
@@ -25,7 +106,13 @@ function createWindow() {
   if (isDev) {
     mainWindow.loadURL('http://localhost:8081');
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    if (!localServerPort) {
+      const distDir = path.join(__dirname, '../dist');
+      const { port, server } = await startLocalStaticServer(distDir);
+      localServerPort = port;
+      localStaticServer = server;
+    }
+    mainWindow.loadURL(`http://127.0.0.1:${localServerPort}/index.html`);
   }
 
   mainWindow.once('ready-to-show', () => {
@@ -36,7 +123,7 @@ function createWindow() {
     if (
       url.startsWith('http://localhost:53682') ||
       url.startsWith('studentflow://') ||
-      url.includes('studentflow') && url.includes('code=')
+      (url.includes('studentflow') && url.includes('code='))
     ) {
       event.preventDefault();
       try {
@@ -157,17 +244,20 @@ if (!gotTheLock) {
     }
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     createMenu();
-    createWindow();
+    await createWindow();
 
-    app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    app.on('activate', async () => {
+      if (BrowserWindow.getAllWindows().length === 0) await createWindow();
     });
   });
 }
 
 app.on('window-all-closed', () => {
+  if (localStaticServer) {
+    localStaticServer.close();
+  }
   if (process.platform !== 'darwin') {
     app.quit();
   }
