@@ -2,7 +2,7 @@ import { Platform, useColorScheme } from 'react-native';
 
 const isIOS = Platform.OS === 'ios';
 
-// --- Dark Luxury / Obsidian Palette ---
+// Barevná paleta pro tmavý režim
 export const darkColors = {
   ink: '#030712',
   navy: '#0B132B',
@@ -13,15 +13,15 @@ export const darkColors = {
   success: '#10B981',
   warning: '#F59E0B',
   danger: '#F43F5E',
-  background: '#090D16', // Deep obsidian canvas
-  surface: '#111827', // Luxury elevated card
-  surfaceElevated: '#162032', // Higher elevation
+  background: '#090D16',
+  surface: '#111827',
+  surfaceElevated: '#162032',
   surfaceContainer: '#1E293B',
   surfaceVariant: '#334155',
-  text: '#FFFFFF', // High-contrast stark white
-  secondary: '#94A3B8', // Sleek slate gray
+  text: '#FFFFFF',
+  secondary: '#94A3B8',
   muted: '#64748B',
-  border: 'rgba(255,255,255,0.08)', // Fine micro-border
+  border: 'rgba(255,255,255,0.08)',
   borderBright: 'rgba(255,255,255,0.16)',
   cardShadow: '#000000',
   cardShadowOpacity: 0.35,
@@ -30,7 +30,7 @@ export const darkColors = {
   isDark: true,
 };
 
-// --- Light Luxury / Apple Everyday Palette ---
+// Barevná paleta pro světlý režim
 export const lightColors = {
   ink: '#030712',
   navy: '#0B132B',
@@ -41,8 +41,8 @@ export const lightColors = {
   success: '#10B981',
   warning: '#D97706',
   danger: '#E11D48',
-  background: '#F8FAFC', // Crisp soft slate-50 canvas
-  surface: '#FFFFFF', // Elevated pure white card
+  background: '#F8FAFC',
+  surface: '#FFFFFF',
   surfaceElevated: '#F1F5F9',
   surfaceContainer: '#E2E8F0',
   surfaceVariant: '#CBD5E1',

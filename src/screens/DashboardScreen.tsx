@@ -86,7 +86,7 @@ export function DashboardScreen({
 
   return (
     <Screen>
-      {/* Premium Hero Identity & Agenda Card */}
+      {/* Karta studenta a dnešní přehled */}
       <LinearGradient
         colors={
           isDark
