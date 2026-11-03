@@ -25,6 +25,8 @@ export type TaskItem = SchoolSource & {
   subjectName?: string;
   priority?: 'low' | 'medium' | 'high';
   notes?: string;
+  isDistanceExam?: boolean;
+  examType?: 'certification' | 'test' | 'oral' | 'distance';
 };
 
 export type ExamChecklistItem = {
@@ -43,6 +45,8 @@ export type ExamItem = SchoolSource & {
   location?: string;
   notes?: string;
   checklist?: ExamChecklistItem[];
+  isDistanceExam?: boolean;
+  examType?: 'certification' | 'test' | 'oral' | 'distance';
 };
 
 export type StudentData = {

@@ -200,6 +200,7 @@ export function parseDiaryRecords(records: RawDiaryRecord[]): ParsedPlus4UData {
 
 import { telemetry } from './telemetry';
 import { fetchStudentStudyData } from './studyEngine';
+import { fetchStudentOralExams } from './bookingEngine';
 
 /**
  * 4) Kompletní synchronizační pipeline:
@@ -211,6 +212,14 @@ export async function syncStudentDataFromPlus4U(
 ): Promise<ParsedPlus4UData> {
   // School assignments are authoritative. A diary failure must not hide them.
   const studyData = await fetchStudentStudyData(token, uuIdentity);
+  try {
+    const oralExams = await fetchStudentOralExams(token, uuIdentity);
+    if (oralExams.length > 0) {
+      studyData.exams = [...studyData.exams, ...oralExams];
+    }
+  } catch {
+    // uuBookingEngine výpadek nesmí zastavit zbytek synchronizace
+  }
   let subjects: Subject[] = [];
   let rawCount = 0;
   let diaryLoaded = false;

@@ -30,3 +30,6 @@ export const PLUS4U_PEOPLE_BASE_URI =
 /** Shared school workspace; student selection always uses the authenticated uuIdentity. */
 export const STUDY_ENGINE_BASE_URI = process.env.EXPO_PUBLIC_STUDY_ENGINE_BASE_URI ||
   'https://uuapp.plus4u.net/uu-studyengine-maing01/c91f31522347bb551f6d3ba548fc81d2/';
+
+/** School booking workspace for oral exams and reservation slots (uuBookingEngine). */
+export const BOOKING_ENGINE_BASE_URI = process.env.EXPO_PUBLIC_BOOKING_ENGINE_BASE_URI || '';

@@ -97,18 +97,26 @@ export function mapStudyData(
     if (states.includes('notFinished')) return 'notFinished';
     return item.state ?? '';
   };
-  const tasks: TaskItem[] = assignments.filter(belongsToStudent).map(item => ({
-    id: `study_assignment_${item.oid}`,
-    title: item.name,
-    subjectId: item.studyGroupOid,
-    subjectName: groupMap.get(item.studyGroupOid ?? '')?.name,
-    dueDate: dateValue(item.toTs),
-    isCompleted: completed(item),
-    notes: cleanText(item.desc),
-    source: 'unicorn',
-    sourceUrl: sourceUrl('assignmentDetail', item.oid),
-    sourceState: resultState(item),
-  }));
+  const isDistanceExam = (name: string): boolean =>
+    /(?:^|\b|\s|_|-)(?:zkoušk|zkousk|písemn|pisemn|zápočt|zapoct|test|exam)(?:$|\b|\s|_|-)/i.test(name);
+
+  const tasks: TaskItem[] = assignments.filter(belongsToStudent).map(item => {
+    const isDistExam = isDistanceExam(item.name);
+    return {
+      id: `study_assignment_${item.oid}`,
+      title: item.name,
+      subjectId: item.studyGroupOid,
+      subjectName: groupMap.get(item.studyGroupOid ?? '')?.name,
+      dueDate: dateValue(item.toTs),
+      isCompleted: completed(item),
+      notes: cleanText(item.desc),
+      source: 'unicorn',
+      sourceUrl: sourceUrl('assignmentDetail', item.oid),
+      sourceState: resultState(item),
+      isDistanceExam: isDistExam,
+      examType: isDistExam ? 'distance' : undefined,
+    };
+  });
   const exams: ExamItem[] = certifications.filter(belongsToStudent).map(item => ({
     id: `study_exam_${item.oid}`,
     title: item.name,
@@ -120,6 +128,7 @@ export function mapStudyData(
     sourceUrl: sourceUrl('certificationExamDetail', item.oid),
     sourceState: resultState(item),
     isCompleted: completed(item),
+    examType: 'certification',
   }));
   for (const step of ownSteps) {
     if (step.kind !== 'test') continue;
@@ -141,6 +150,30 @@ export function mapStudyData(
       sourceUrl: parent ? sourceUrl('assignmentDetail', parent.oid) : `${baseUri.replace(/\/?$/, '/')}student`,
       sourceState: resultState(step),
       isCompleted: completed(step),
+      examType: 'test',
+    });
+  }
+  // Distance study exams: non-automated written tests / exams created as assignments
+  for (const item of assignments.filter(belongsToStudent)) {
+    if (!isDistanceExam(item.name)) continue;
+    const alreadyPresent = exams.some(
+      e => e.id === `study_test_${item.oid}` || ownSteps.some(s => s.assignmentOid === item.oid && e.id === `study_test_${s.oid}`)
+    );
+    if (alreadyPresent) continue;
+
+    exams.push({
+      id: `study_dist_exam_${item.oid}`,
+      title: item.name,
+      subjectId: item.studyGroupOid,
+      subjectName: groupMap.get(item.studyGroupOid ?? '')?.name ?? 'Předmět neuveden',
+      date: dateValue(item.toTs),
+      notes: cleanText(item.desc),
+      source: 'unicorn',
+      sourceUrl: sourceUrl('assignmentDetail', item.oid),
+      sourceState: resultState(item),
+      isCompleted: completed(item),
+      isDistanceExam: true,
+      examType: 'distance',
     });
   }
   return { tasks, exams };

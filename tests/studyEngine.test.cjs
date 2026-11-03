@@ -14,6 +14,7 @@ function loadService(file, overrides = {}) {
     if (name === './plus4uConfig') return { STUDY_ENGINE_BASE_URI: 'https://school.example/workspace/' };
     if (name === './telemetry') return { telemetry: { stage() { }, call() { }, dataSynced() { } } };
     if (name === './semester') return loadService('semester.ts');
+    if (name === './bookingEngine') return { fetchStudentOralExams: async () => [] };
     throw new Error(`Unexpected dependency ${name}`);
   }, mod, mod.exports);
   return mod.exports;
@@ -41,6 +42,15 @@ test('test classification uses kind, never title keywords', () => {
   assert.equal(exams[0].title, 'SQL');
   assert.equal(exams[0].date, assignment.toTs);
   assert.equal(exams[0].subjectName, group.name);
+});
+test('distance learning exams assigned as assignments are mapped to exams with distance type', () => {
+  const distAssignment = { ...assignment, oid: 'a2', name: 'Zkouškový test z databází' };
+  const { tasks, exams } = map([assignment, distAssignment], [], [step]);
+  const distTask = tasks.find(t => t.id === 'study_assignment_a2');
+  const distExam = exams.find(e => e.id === 'study_dist_exam_a2');
+  assert(distTask?.isDistanceExam, 'Assignment must have isDistanceExam flag');
+  assert(distExam, 'Distance exam must be added to exams list');
+  assert.equal(distExam.examType, 'distance');
 });
 test('student results remain authoritative, including reopened and failed work', () => {
   assert.equal(map().tasks[0].isCompleted, false);

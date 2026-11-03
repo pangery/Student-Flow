@@ -611,6 +611,24 @@ export function TasksScreen({
                     )}
 
 
+                    {/* Distance exam badge */}
+                    {task.isDistanceExam && !isDone && (
+                      <View
+                        style={[
+                          styles.distanceExamBadge,
+                          {
+                            backgroundColor: isDark ? 'rgba(245,158,11,0.15)' : '#FFFBEB',
+                            borderColor: isDark ? 'rgba(245,158,11,0.35)' : '#FDE68A',
+                          },
+                        ]}
+                      >
+                        <Ionicons name="school" size={11} color="#F59E0B" />
+                        <Text style={[styles.distanceExamBadgeText, { color: '#F59E0B' }]}>
+                          Zkouškový test
+                        </Text>
+                      </View>
+                    )}
+
                     {/* Priority badge */}
                     {task.priority && !isDone && (
                       <View
@@ -1094,6 +1112,19 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     fontWeight: '800',
     letterSpacing: 0.3,
+  },
+  distanceExamBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+  },
+  distanceExamBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '700',
   },
   priorityBadge: {
     flexDirection: 'row',
