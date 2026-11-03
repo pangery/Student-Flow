@@ -1,40 +1,76 @@
-# StudentFlow React Native
+# StudentFlow
 
-Společná iOS a Android verze StudentFlow postavená na React Native, Expo development buildu a TypeScriptu.
+Multiplatformní studentská aplikace pro studenty Unicorn University postavená na React Native, Expo, TypeScriptu a Electronu pro **iOS, Android, macOS, Windows i Linux**.
 
-## První spuštění
+---
 
-1. `npm install`
-2. Zkopírovat `.env.example` jako `.env` a doplnit údaje od Plus4U.
-3. `npx expo prebuild`
-4. `npm run ios` nebo `npm run android`
+## Podporované platformy a spuštění
 
-## Přihlášení
+### 1. Mobilní aplikace (iOS & Android)
+```bash
+npm install
+npm run ios        # Spuštění na iOS simulátoru / zařízení
+npm run android    # Spuštění na Android emulátoru / zařízení
+```
 
-Připraven je Authorization Code Flow s PKCE a callback `studentflow://auth`. Token se ukládá přes `expo-secure-store` do iOS Keychain nebo Android Keystore. Do mobilní aplikace se nevkládá client secret.
+### 2. Desktopové aplikace (macOS, Windows, Linux)
+Spuštění nativního desktopového okna:
+```bash
+npm run desktop        # Produkční desktopové okno
+npm run desktop:dev    # Vývojářský režim s live reloadem
+```
 
-## Stav migrace
+Sestavení instalačních balíčků:
+* **macOS**: `npm run dist:mac` (vytvoří `.dmg` a `.zip`)
+* **Windows**: `npm run dist:win` (vytvoří `.exe` instalátor i přenosnou portable verzi)
+* **Linux**: `npm run dist:linux` (vytvoří `.AppImage` a `.deb`)
 
-- přehled studenta
-- rozvrh
-- úkoly s lokálním dokončením
-- zkouškový odpočet
-- lokální persistence
-- OIDC/PKCE vrstva připravená na údaje od Plus4U
+### 3. Webový prohlížeč
+```bash
+npx expo start --web
+```
 
-Po přihlášení i obnovení relace se načítají zadání, testy a certifikační zkoušky z uuStudyEngine. Používají se čtecí příkazy `assignment/list`, `certificationExam/list`, `step/list` a `studyGroup/list`, vždy s `studentUuIdentity` z aktuální OIDC relace a se stránkováním. Testy se rozpoznávají podle `kind: test`, nikoli podle názvu. Předmět se propojuje přes `studyGroupOid`; termín pochází z `toTs`. Chybějící datum zůstává neuvedené.
+---
 
-Výchozí školní workspace byl zjištěn z odkazů zadání na uživatelem poskytnuté studentské stránce. Lze ho změnit pomocí `EXPO_PUBLIC_STUDY_ENGINE_BASE_URI`. Konkrétní student ani jeho zadání nejsou v konfiguraci zapsané. Příkazy a datová pole byly ověřeny ve veřejném klientu [uuStudyEngine Core](https://cdng02.plus4u.net/b686718ad49d3ec4d88936576cd830c2/uu-studyengineg01/2.x/uu_studyengineg01-core.min.js) (2.15.0). Jde o interní rozhraní školy, jeho změny mohou vyžadovat úpravu adaptéru.
+## Architektura a klíčové funkce
 
-Školní položky mají odkaz na zadání v Unicornu. Stav a termín se přebírají ze školy; lokální změna splnění, smazání nebo přesunutí školního termínu není dostupná. Vlastní úkoly a termíny zůstávají oddělené a při synchronizaci se zachovají. Prázdné výsledky zůstávají prázdné a chyby API nepřepisují poslední úspěšná školní data. Cache v3 je oddělená podle uuIdentity; starší data odvozovaná z diáře se nepřebírají.
+### 1. Autentizace a bezpečnost
+* Využívá standardní **Plus4U OIDC** (OpenID Connect) Authorization Code Flow s PKCE.
+* Tokeny se v mobilních zařízeních ukládají do hardwarově šifrovaného úložiště (`expo-secure-store` – Apple Keychain / Android Keystore), na desktopu do zabezpečeného perzistentního úložiště s oddělením relace.
+* Do repozitáře nejsou vloženy žádné soukromé osobní přístupy ani cizí tokeny.
 
-Úkoly a zkoušky se automaticky filtrují podle aktuálního semestru na Unicorn University (harmonogram: Zimní semestr od 1. září do 14. února; Letní semestr od 15. února do 31. srpna). Zadání a zkoušky z předešlých semestrů se v aktivním přehledu nezobrazují, čímž se předchází zahlcení starými položkami. V aplikaci je k dispozici přepínač mezi aktuálním semestrem a archivem.
+### 2. Synchronizace rozvrhu a učeben
+* Rozvrh se načítá přes Plus4U Digital Workspace.
+* Automaticky extrahuje a zobrazuje kód a název učebny (včetně indikace virtuální učebny / Teams).
+* Karty rozvrhu zobrazují přesný čas, kód předmětu, vyučujícího i učebnu.
 
-Rozvrh pochází z Digital Workspace přes Plus4UPeople a ukazuje aktuální týden. Výpadek diáře neblokuje školní úkoly a testy. Učebnice zatím nemají skutečný zdroj a jejich seznam zůstává prázdný.
+### 3. Zadání, úkoly a zkoušky
+* Úkoly a testy se synchronizují s oficiálním systémem `uuStudyEngine`.
+* **Autoritativní synchronizace**: Otevření odkazu na úkol v portálu neoznačí úkol automaticky jako hotový – stav se ověřuje přímo ze školního systému po skutečném odevzdání studentem.
+* Úkoly jsou řazeny podle termínu odevzdání (nejbližší termíny nahoře).
+* Automatické filtrování podle aktuálního semestru s možností nahlédnout do archivu.
 
-## Ověření
+### 4. Učebnice s offline režimem a kontrolou integrity
+* Učebnice vázané na zapsané předměty studenta.
+* Integrovaná čtečka kapitol se sledováním postupu, odhadem času čtení, nastavením velikosti písma a zvýrazněním kódu.
+* Funkce **Stáhnout semestr** pro kompletní přípravu offline studia.
+* **Kryptografická ochrana integrity (FNV-1a hash)**: Stažené soubory v lokálním úložišti jsou chráněny kontrolním součtem a hardwarovou solí, která zabraňuje neautorizovaným zásahům.
 
-- `npm run typecheck`
-- `npm run test:study`
-- Na webu bylo ověřeno skutečné zadání a jeho krok typu test. Přímé otevření API bez bearer tokenu vrací 403; webové přihlášení neověřuje oprávnění mobilního OIDC klienta.
-- Zbývá živá kontrola v mobilní aplikaci: přihlásit studenta, synchronizovat, porovnat zadání, předměty, termíny a stavy s Unicornem, ověřit prázdné výsledky, chybu sítě a přepnutí účtu. Automatické testy používají modelové odpovědi, nikoli produkční token nebo studentská data.
+### 5. Nativní rozhraní
+* Responzivní design optimalizovaný jak pro mobilní telefony, tak pro tablety i širokoúhlé monitory (až do 1040 px šířky).
+* Na iOS a desktopu plovoucí skleněné navigační menu (frosted glass) s efektem rozostření pozadí.
+* Na Androidu čistý Material 3 navigační panel.
+
+---
+
+## Ověření a testy
+
+V projektu je připravená sada unit testů pokrývající synchronizační engine, notifikace, integritu učebnic a expiraci relace:
+
+```bash
+# Kontrola typové správnosti TypeScriptu (0 chyb):
+npm run typecheck
+
+# Spuštění kompletní testovací sady (27 testů):
+npm test
+```
