@@ -23,6 +23,6 @@ export function Screen({ children }: PropsWithChildren) {
 }
 const styles = StyleSheet.create({
   safe: { flex: 1 },
-  content: { width: '100%', maxWidth: 760, alignSelf: 'center', flexGrow: 1,
+  content: { width: '100%', maxWidth: isWeb ? 1040 : 760, alignSelf: 'center', flexGrow: 1,
     paddingHorizontal: spacing.md, paddingTop: spacing.xs, gap: spacing.md },
 });

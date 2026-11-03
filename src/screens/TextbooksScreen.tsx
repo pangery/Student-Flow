@@ -107,7 +107,7 @@ export function TextbooksScreen({ studentSubjects = [], studentIdentity = 'defau
   const handleRemove = async (book: Textbook) => {
     Alert.alert(
       'Smazat staženou učebnici',
-      `Chceš uvolnit místo v telefonu a smazat offline kopii knihy „${book.title}“?`,
+      `Chceš uvolnit místo v zařízení a smazat offline kopii knihy „${book.title}“?`,
       [
         { text: 'Zrušit', style: 'cancel' },
         {
@@ -279,7 +279,7 @@ export function TextbooksScreen({ studentSubjects = [], studentIdentity = 'defau
               onPress={async () => {
                 Alert.alert(
                   'Vymazat mezipaměť',
-                  'Chceš smazat všechny stažené učebnice z telefonu a uvolnit místo?',
+                  'Chceš smazat všechny stažené učebnice ze zařízení a uvolnit místo?',
                   [
                     { text: 'Zrušit', style: 'cancel' },
                     {

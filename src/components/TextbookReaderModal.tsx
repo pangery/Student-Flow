@@ -110,7 +110,7 @@ export function TextbookReaderModal({
                 ]}
               />
               <Text style={styles.offlineStatus}>
-                {fromCache ? 'Uloženo v telefonu' : 'Online verze'}
+                {fromCache ? 'Uloženo offline v zařízení' : 'Online verze'}
               </Text>
             </View>
             <Text
@@ -570,6 +570,9 @@ const styles = StyleSheet.create({
   contentContainer: {
     padding: 18,
     gap: 18,
+    width: '100%',
+    maxWidth: 860,
+    alignSelf: 'center',
   },
   chapterMetaRow: {
     flexDirection: 'row',
