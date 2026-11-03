@@ -12,7 +12,7 @@ function loadService(file, overrides = {}) {
   new Function('require', 'module', 'exports', output)(name => {
     if (Object.hasOwn(overrides, name)) return overrides[name];
     if (name === './plus4uConfig') return { STUDY_ENGINE_BASE_URI: 'https://school.example/workspace/' };
-    if (name === './telemetry') return { telemetry: { stage() {}, call() {}, dataSynced() {} } };
+    if (name === './telemetry') return { telemetry: { stage() { }, call() { }, dataSynced() { } } };
     if (name === './semester') return loadService('semester.ts');
     throw new Error(`Unexpected dependency ${name}`);
   }, mod, mod.exports);
@@ -33,6 +33,7 @@ test('assignments preserve source title, course, deadline and stable identity', 
   assert.equal(tasks[0].source, 'unicorn');
   assert.match(tasks[0].sourceUrl, /student\/assignmentDetail\?oid=a1$/);
   assert.equal(tasks[0].isCompleted, false);
+
 });
 test('test classification uses kind, never title keywords', () => {
   const { exams } = map([assignment], [], [{ ...step, name: 'SQL' }, { ...step, oid: 's2', name: 'Final exam', kind: 'lesson' }]);
@@ -67,12 +68,16 @@ test('empty results stay empty; missing dates are never fabricated', () => {
 });
 test('all list pages use the authenticated identity and token', async () => {
   const calls = [];
-  const api = loadService('studyEngine.ts', { './plus4uClient': { callUuCmd: async (base, command, opts) => {
-    calls.push(opts);
-    return opts.dtoIn.pageInfo.pageIndex === 0
-      ? { itemList: Array.from({ length: 200 }, (_, i) => ({ ...assignment, oid: `a${i}` })), pageInfo: { total: 201 } }
-      : { itemList: [{ ...assignment, oid: 'last' }], pageInfo: { total: 201 } };
-  } } });
+  const api = loadService('studyEngine.ts', {
+    './plus4uClient': {
+      callUuCmd: async (base, command, opts) => {
+        calls.push(opts);
+        return opts.dtoIn.pageInfo.pageIndex === 0
+          ? { itemList: Array.from({ length: 200 }, (_, i) => ({ ...assignment, oid: `a${i}` })), pageInfo: { total: 201 } }
+          : { itemList: [{ ...assignment, oid: 'last' }], pageInfo: { total: 201 } };
+      }
+    }
+  });
   assert.equal((await api.listStudyEntities('test-token', identity, 'assignment/list')).length, 201);
   assert.deepEqual(calls.map(call => call.dtoIn.pageInfo.pageIndex), [0, 1]);
   assert(calls.every(call => call.dtoIn.studentUuIdentity === identity && call.token === 'test-token'));

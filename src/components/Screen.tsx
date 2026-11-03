@@ -1,7 +1,7 @@
 import type { PropsWithChildren } from 'react';
 import { ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { isIOS } from '../theme/platform';
+import { isIOS, isWeb } from '../theme/platform';
 import { useAppTheme, spacing } from '../theme/theme';
 
 export function Screen({ children }: PropsWithChildren) {
@@ -10,7 +10,7 @@ export function Screen({ children }: PropsWithChildren) {
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.background }]} edges={['top', 'left', 'right']}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: isIOS ? insets.bottom + 108 : spacing.lg }]}
+        contentContainerStyle={[styles.content, { paddingBottom: (isIOS || isWeb) ? insets.bottom + 108 : spacing.lg }]}
         keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
         automaticallyAdjustKeyboardInsets
         showsVerticalScrollIndicator={false}

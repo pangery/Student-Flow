@@ -29,6 +29,14 @@ function loadAuthService(mockToken = null) {
     if (name === './systemBrowserLogin') {
       return { isSystemBrowserLoginAvailable: () => false, LoginCancelledError: class extends Error {}, loginWithSystemBrowser: async () => ({}) };
     }
+    if (name === '@react-native-async-storage/async-storage') {
+      let asyncStored = mockToken;
+      return {
+        getItem: async () => asyncStored,
+        setItem: async (k, v) => { asyncStored = v; },
+        removeItem: async () => { asyncStored = null; },
+      };
+    }
     if (name === 'expo-secure-store') {
       let stored = mockToken;
       return {

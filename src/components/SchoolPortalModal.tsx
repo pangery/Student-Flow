@@ -5,6 +5,7 @@ import {
   Alert,
   Linking,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -235,38 +236,51 @@ export function SchoolPortalModal({
 
         {/* WebView Container */}
         <View style={styles.webWrapper}>
-          <WebView
-            ref={webViewRef}
-            source={{ uri: url }}
-            // Persistent session cookies: shared with WKWebsiteDataStore default on iOS and CookieManager on Android
-            incognito={false}
-            sharedCookiesEnabled={true}
-            domStorageEnabled={true}
-            thirdPartyCookiesEnabled={true}
-            javaScriptEnabled={true}
-            allowsBackForwardNavigationGestures={true}
-            injectedJavaScriptBeforeContentLoaded={tokenInjectionScript}
-            onLoadProgress={(e: any) => setProgress(e?.nativeEvent?.progress ?? 0)}
-            onNavigationStateChange={(nav: WebViewNavigation): void => {
-              setCanGoBack(nav.canGoBack);
-              setCanGoForward(nav.canGoForward);
-              if (nav.url) {
-                setCurrentUrl(nav.url);
-              }
-            }}
-            startInLoadingState={true}
-            renderLoading={() => (
-              <View style={styles.loaderWrap}>
-                <ActivityIndicator
-                  size="large"
-                  color={isDark ? '#38BDF8' : '#2563EB'}
-                />
-                <Text style={[styles.loaderText, { color: theme.secondary }]}>
-                  Načítám zadání z portálu Unicorn...
-                </Text>
-              </View>
-            )}
-          />
+          {Platform.OS === 'web' ? (
+            <iframe
+              src={url}
+              style={{
+                width: '100%',
+                height: '100%',
+                border: 'none',
+                backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
+              }}
+              title={title || 'Unicorn Portal'}
+            />
+          ) : (
+            <WebView
+              ref={webViewRef}
+              source={{ uri: url }}
+              // Persistent session cookies: shared with WKWebsiteDataStore default on iOS and CookieManager on Android
+              incognito={false}
+              sharedCookiesEnabled={true}
+              domStorageEnabled={true}
+              thirdPartyCookiesEnabled={true}
+              javaScriptEnabled={true}
+              allowsBackForwardNavigationGestures={true}
+              injectedJavaScriptBeforeContentLoaded={tokenInjectionScript}
+              onLoadProgress={(e: any) => setProgress(e?.nativeEvent?.progress ?? 0)}
+              onNavigationStateChange={(nav: WebViewNavigation): void => {
+                setCanGoBack(nav.canGoBack);
+                setCanGoForward(nav.canGoForward);
+                if (nav.url) {
+                  setCurrentUrl(nav.url);
+                }
+              }}
+              startInLoadingState={true}
+              renderLoading={() => (
+                <View style={styles.loaderWrap}>
+                  <ActivityIndicator
+                    size="large"
+                    color={isDark ? '#38BDF8' : '#2563EB'}
+                  />
+                  <Text style={[styles.loaderText, { color: theme.secondary }]}>
+                    Načítám zadání z portálu Unicorn...
+                  </Text>
+                </View>
+              )}
+            />
+          )}
         </View>
       </SafeAreaView>
     </Modal>

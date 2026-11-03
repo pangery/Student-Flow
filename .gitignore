@@ -1,6 +1,8 @@
 node_modules/
 .expo/
 dist/
+release/
+out/
 ios/
 android/
 .env

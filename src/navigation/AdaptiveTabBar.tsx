@@ -3,7 +3,7 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { isIOS } from '../theme/platform';
+import { isIOS, isWeb } from '../theme/platform';
 import { colors, radius, useAppTheme } from '../theme/theme';
 
 export function AdaptiveTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
@@ -14,7 +14,7 @@ export function AdaptiveTabBar({ state, descriptors, navigation }: BottomTabBarP
   const activeColor = isDark ? '#38BDF8' : '#2563EB';
   const inactiveColor = isDark ? '#64748B' : '#94A3B8';
 
-  if (isIOS) {
+  if (isIOS || isWeb) {
     return (
       <View
         style={[

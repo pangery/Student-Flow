@@ -8,6 +8,14 @@
     "start:dev": "expo start --dev-client",
     "ios": "expo run:ios",
     "android": "expo run:android",
+    "web": "expo start --web",
+    "build:web": "expo export -p web",
+    "desktop": "npm run build:web && electron electron/main.cjs",
+    "desktop:dev": "electron electron/main.cjs --dev",
+    "dist:mac": "npm run build:web && electron-builder --mac",
+    "dist:win": "npm run build:web && electron-builder --win",
+    "dist:linux": "npm run build:web && electron-builder --linux",
+    "dist:all": "npm run build:web && electron-builder -mwl",
     "typecheck": "tsc --noEmit",
     "inspector": "node telemetry-dashboard/server.mjs",
     "test": "node --test tests/studyEngine.test.cjs tests/notifications.test.cjs tests/widgetBridge.test.cjs tests/authExpiry.test.cjs tests/textbookSecurity.test.cjs",
@@ -18,6 +26,7 @@
     "test:textbook": "node --test tests/textbookSecurity.test.cjs"
   },
   "dependencies": {
+    "@expo/metro-runtime": "~58.0.16",
     "@expo/vector-icons": "^15.0.3",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-navigation/bottom-tabs": "^7.4.7",
@@ -35,16 +44,20 @@
     "expo-system-ui": "~58.0.6",
     "expo-web-browser": "~58.0.6",
     "react": "19.3.0",
+    "react-dom": "19.3.0",
     "react-native": "0.88.0",
     "react-native-safe-area-context": "~5.10.1",
     "react-native-screens": "~4.30.0",
     "react-native-tcp-socket": "^6.4.3",
+    "react-native-web": "^0.21.4",
     "react-native-webview": "14.0.1"
   },
   "devDependencies": {
     "@expo/ngrok": "^4.1.3",
     "@types/node": "^26.6.3",
     "@types/react": "~19.3.0",
+    "electron": "^45.2.1",
+    "electron-builder": "^26.18.0",
     "typescript": "~6.0.3"
   },
   "expo": {
@@ -54,6 +67,40 @@
           "react-native-tcp-socket"
         ]
       }
+    }
+  },
+  "build": {
+    "appId": "com.studentflow.desktop",
+    "productName": "StudentFlow",
+    "extraMetadata": {
+      "main": "electron/main.cjs"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "mac": {
+      "category": "public.app-category.education",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Education"
     }
   }
 }

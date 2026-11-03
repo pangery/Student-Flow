@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import {
   decodeJwt,
@@ -35,9 +36,30 @@ export function toSession(idToken: string): Session {
 }
 
 export const tokenStore = {
-  load: () => SecureStore.getItemAsync(TOKEN_KEY),
-  save: (token: string) => SecureStore.setItemAsync(TOKEN_KEY, token),
-  clear: () => SecureStore.deleteItemAsync(TOKEN_KEY),
+  load: async () => {
+    try {
+      if (await SecureStore.isAvailableAsync?.()) {
+        return await SecureStore.getItemAsync(TOKEN_KEY);
+      }
+    } catch {}
+    return AsyncStorage.getItem(TOKEN_KEY);
+  },
+  save: async (token: string) => {
+    try {
+      if (await SecureStore.isAvailableAsync?.()) {
+        return await SecureStore.setItemAsync(TOKEN_KEY, token);
+      }
+    } catch {}
+    return AsyncStorage.setItem(TOKEN_KEY, token);
+  },
+  clear: async () => {
+    try {
+      if (await SecureStore.isAvailableAsync?.()) {
+        return await SecureStore.deleteItemAsync(TOKEN_KEY);
+      }
+    } catch {}
+    return AsyncStorage.removeItem(TOKEN_KEY);
+  },
 };
 
 export function isSessionExpired(session: Session | null, skewSeconds = 30): boolean {

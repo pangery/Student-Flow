@@ -5,6 +5,7 @@ import {
   Alert,
   Linking,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -60,6 +61,20 @@ export function Plus4ULoginModal({
       .catch((err) => {
         onError(`Nepodařilo se připojit k Plus4U OIDC: ${err.message}`);
       });
+
+    // Support for Electron desktop app redirect capture
+    if (typeof window !== 'undefined') {
+      const electronApi = (window as any).electronAPI;
+      if (electronApi?.onOAuthCode) {
+        const unsub = electronApi.onOAuthCode((code: string) => {
+          if (!handled.current) {
+            handled.current = true;
+            onSuccess(code);
+          }
+        });
+        return () => unsub?.();
+      }
+    }
   }, [visible, onError]);
 
   const tryHandleRedirect = (url: string): boolean => {
@@ -225,45 +240,58 @@ export function Plus4ULoginModal({
           </View>
         )}
 
-        {/* WebView Container */}
+        {/* WebView / Web Iframe Container */}
         {authorizeUrl ? (
           <View style={styles.webWrapper}>
-            <WebView
-              source={{ uri: authorizeUrl }}
-              incognito={false}
-              sharedCookiesEnabled={true}
-              domStorageEnabled={true}
-              thirdPartyCookiesEnabled={true}
-              originWhitelist={['*']}
-              startInLoadingState
-              onLoadEnd={() => setLoading(false)}
-              renderLoading={() => (
-                <View style={styles.loaderWrap}>
-                  <ActivityIndicator
-                    size="large"
-                    color={isDark ? '#38BDF8' : '#2563EB'}
-                  />
-                  <Text style={[styles.loaderText, { color: theme.secondary }]}>
-                    Načítám přihlašovací bránu Plus4U...
-                  </Text>
-                </View>
-              )}
-              onShouldStartLoadWithRequest={(req) => {
-                const redirected = tryHandleRedirect(req.url);
-                if (redirected) return false;
-                const openedApp = tryOpenExternalApp(req.url);
-                if (openedApp) return false;
-                return true;
-              }}
-              onError={(e) => {
-                if (!tryHandleRedirect(e.nativeEvent.url)) {
-                  onError(e.nativeEvent.description);
-                }
-              }}
-              onNavigationStateChange={(nav) => {
-                tryHandleRedirect(nav.url);
-              }}
-            />
+            {Platform.OS === 'web' ? (
+              <iframe
+                src={authorizeUrl}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  border: 'none',
+                  backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
+                }}
+                title="Plus4U Login"
+              />
+            ) : (
+              <WebView
+                source={{ uri: authorizeUrl }}
+                incognito={false}
+                sharedCookiesEnabled={true}
+                domStorageEnabled={true}
+                thirdPartyCookiesEnabled={true}
+                originWhitelist={['*']}
+                startInLoadingState
+                onLoadEnd={() => setLoading(false)}
+                renderLoading={() => (
+                  <View style={styles.loaderWrap}>
+                    <ActivityIndicator
+                      size="large"
+                      color={isDark ? '#38BDF8' : '#2563EB'}
+                    />
+                    <Text style={[styles.loaderText, { color: theme.secondary }]}>
+                      Načítám přihlašovací bránu Plus4U...
+                    </Text>
+                  </View>
+                )}
+                onShouldStartLoadWithRequest={(req) => {
+                  const redirected = tryHandleRedirect(req.url);
+                  if (redirected) return false;
+                  const openedApp = tryOpenExternalApp(req.url);
+                  if (openedApp) return false;
+                  return true;
+                }}
+                onError={(e) => {
+                  if (!tryHandleRedirect(e.nativeEvent.url)) {
+                    onError(e.nativeEvent.description);
+                  }
+                }}
+                onNavigationStateChange={(nav) => {
+                  tryHandleRedirect(nav.url);
+                }}
+              />
+            )}
           </View>
         ) : (
           <View style={styles.loaderWrap}>

@@ -4,7 +4,7 @@ import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/
 import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, AppState, useColorScheme } from 'react-native';
+import { Alert, AppState, Platform, useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Plus4ULoginModal } from './src/components/Plus4ULoginModal';
 import { SchoolPortalModal } from './src/components/SchoolPortalModal';
@@ -185,6 +185,8 @@ export default function App() {
 
   // Notification click / tap response listener
   useEffect(() => {
+    if (Platform.OS === 'web') return;
+
     const handleNotificationTarget = (response: Notifications.NotificationResponse | null) => {
       const target = getNotificationNavigationTarget(response);
       if (target && navigationRef.current) {
@@ -198,14 +200,17 @@ export default function App() {
       }
     };
 
-    const sub = Notifications.addNotificationResponseReceivedListener(handleNotificationTarget);
+    let sub: any;
+    try {
+      sub = Notifications.addNotificationResponseReceivedListener(handleNotificationTarget);
 
-    Notifications.getLastNotificationResponseAsync()
-      .then(handleNotificationTarget)
-      .catch(() => undefined);
+      Notifications.getLastNotificationResponseAsync()
+        .then(handleNotificationTarget)
+        .catch(() => undefined);
+    } catch {}
 
     return () => {
-      sub.remove();
+      sub?.remove?.();
     };
   }, []);
 
