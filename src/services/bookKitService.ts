@@ -7,6 +7,7 @@
  */
 
 import type { Textbook, TextbookChapter } from '../types/models';
+import { textbookService } from './textbookService';
 
 export type BookUrlParsed = {
   baseUri: string;
@@ -62,6 +63,28 @@ export function parseBookUrl(urlOrAwid: string): BookUrlParsed | null {
   }
 
   return null;
+}
+
+/**
+ * Automaticky vyextrahuje všechny odkazy na uuBookKit a AWID kódy
+ * z libovolně dlouhého zkopírovaného textu nebo HTML kódu studijního portálu.
+ */
+export function extractAllBookUrls(textOrHtml: string): BookUrlParsed[] {
+  if (!textOrHtml) return [];
+  const regex = /(?:https:\/\/[^/\s"'`\<\>]+\/uu-bookkit-maing01\/([0-9a-fA-F]{32})|[0-9a-fA-F]{32})/gi;
+  const found = new Map<string, BookUrlParsed>();
+  let m;
+  while ((m = regex.exec(textOrHtml)) !== null) {
+    const awid = (m[1] || m[0]).toLowerCase();
+    if (!found.has(awid)) {
+      found.set(awid, {
+        awid,
+        baseUri: `https://uuapp.plus4u.net/uu-bookkit-maing01/${awid}/`,
+        pageCode: null,
+      });
+    }
+  }
+  return Array.from(found.values());
 }
 
 /**
@@ -349,5 +372,56 @@ export const bookKitService = {
       sizeKb: estimatedKb,
       chapters,
     };
+  },
+
+  /**
+   * Hromadně stáhne a uloží více knih najednou (např. automaticky zkopírované ze schránky z portálu)
+   */
+  async batchImportBooks(
+    awidsOrUrls: string[],
+    token?: string,
+    studentIdentity = 'default',
+    studentSubjects: any[] = [],
+    onProgress?: (currentIdx: number, total: number, bookTitle: string) => void
+  ): Promise<{ successful: number; failed: number; titles: string[] }> {
+    const results = { successful: 0, failed: 0, titles: [] as string[] };
+    const total = awidsOrUrls.length;
+
+    for (let i = 0; i < total; i++) {
+      const item = awidsOrUrls[i];
+      if (!item) continue;
+      try {
+        if (onProgress) {
+          onProgress(i + 1, total, `Kniha ${i + 1} z ${total}...`);
+        }
+        const book = await this.fetchCompleteBook(item, token, (d, t, title) => {
+          if (onProgress) onProgress(i + 1, total, `${title} (${d}/${t})`);
+        });
+
+        // Automatické spárování se zapsaným předmětem podle názvu nebo kódu
+        const matched = studentSubjects.find(
+          (s) =>
+            s.name.toLowerCase().includes(book.title.toLowerCase()) ||
+            book.title.toLowerCase().includes(s.name.toLowerCase()) ||
+            (s.code && (book.title.toLowerCase().includes(s.code.toLowerCase()) || book.code.toLowerCase().includes(s.code.toLowerCase())))
+        );
+        if (matched) {
+          book.subjectId = matched.id;
+          book.subjectName = matched.name;
+        }
+
+        const ok = await textbookService.saveImportedBook(book, studentIdentity);
+        if (ok) {
+          results.successful++;
+          results.titles.push(book.title);
+        } else {
+          results.failed++;
+        }
+      } catch (e) {
+        console.warn(`Chyba při hromadném stažení knihy ${item}:`, e);
+        results.failed++;
+      }
+    }
+    return results;
   },
 };
