@@ -3,7 +3,9 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -12,6 +14,7 @@ import {
 } from 'react-native';
 import { Screen } from '../components/Screen';
 import { TextbookReaderModal } from '../components/TextbookReaderModal';
+import { bookKitService, KNOWN_UNICORN_BOOKS } from '../services/bookKitService';
 import { sampleTextbooks } from '../services/sampleTextbooks';
 import { textbookService } from '../services/textbookService';
 import { isIOS } from '../theme/platform';
@@ -23,9 +26,10 @@ type FilterType = 'all' | 'enrolled' | 'cached' | 'available';
 type Props = {
   studentSubjects?: any[];
   studentIdentity?: string;
+  sessionToken?: string;
 };
 
-export function TextbooksScreen({ studentSubjects = [], studentIdentity = 'default' }: Props) {
+export function TextbooksScreen({ studentSubjects = [], studentIdentity = 'default', sessionToken }: Props) {
   const theme = useAppTheme();
   const isDark = theme.isDark;
 
@@ -45,10 +49,17 @@ export function TextbooksScreen({ studentSubjects = [], studentIdentity = 'defau
   const [readerFromCache, setReaderFromCache] = useState(false);
   const [readerCachedAt, setReaderCachedAt] = useState<string | undefined>(undefined);
 
+  // Import from Unicorn uuBookKit modal
+  const [importModalVisible, setImportModalVisible] = useState(false);
+  const [importUrlOrAwid, setImportUrlOrAwid] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number; title: string } | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+
   const refreshData = async () => {
     const isOnline = await textbookService.getIsOnline();
     const meta = await textbookService.getCachedMeta(studentIdentity);
-    const books = await textbookService.getAllTextbooks(studentSubjects);
+    const books = await textbookService.getAllTextbooks(studentSubjects, studentIdentity);
     setIsOfflineMode(!isOnline);
     setCachedMeta(meta);
     setTextbooks(books);
@@ -136,6 +147,57 @@ export function TextbooksScreen({ studentSubjects = [], studentIdentity = 'defau
     setReaderFromCache(result.fromCache);
     setReaderCachedAt(result.cachedAt);
     setReaderVisible(true);
+  };
+
+  const handleImportBook = async (customUrl?: string) => {
+    const target = customUrl || importUrlOrAwid;
+    if (!target.trim()) {
+      setImportError('Zadej prosím platnou adresu uuBookKit nebo kód AWID.');
+      return;
+    }
+    setIsImporting(true);
+    setImportError(null);
+    setImportProgress(null);
+
+    try {
+      const book = await bookKitService.fetchCompleteBook(
+        target.trim(),
+        sessionToken,
+        (done, total, title) => {
+          setImportProgress({ done, total, title });
+        }
+      );
+
+      // Přiřadit k zapsanému předmětu studenta pokud odpovídá
+      const matchedSubject = studentSubjects.find(
+        (s) =>
+          s.name.toLowerCase().includes(book.title.toLowerCase()) ||
+          book.title.toLowerCase().includes(s.name.toLowerCase()) ||
+          (s.code && book.title.toLowerCase().includes(s.code.toLowerCase()))
+      );
+      if (matchedSubject) {
+        book.subjectId = matchedSubject.id;
+        book.subjectName = matchedSubject.name;
+      }
+
+      const saved = await textbookService.saveImportedBook(book, studentIdentity);
+      if (saved) {
+        await refreshData();
+        setImportModalVisible(false);
+        setImportUrlOrAwid('');
+        setImportProgress(null);
+        Alert.alert(
+          'Učebnice z Unicornu uložena',
+          `Kniha „${book.title}“ byla úspěšně stažena (${book.chapters.length} kapitol) a zabezpečeně uložena pro offline studium.`
+        );
+      } else {
+        setImportError('Nepodařilo se uložit učebnici do lokální paměti.');
+      }
+    } catch (err: any) {
+      setImportError(err.message || 'Nastala chyba při stahování knihy z Unicornu.');
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   const cachedCount = textbooks.filter(book => cachedMeta[book.id]).length;
@@ -245,6 +307,36 @@ export function TextbooksScreen({ studentSubjects = [], studentIdentity = 'defau
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <Pressable
+            onPress={() => {
+              setImportModalVisible(true);
+              setImportError(null);
+              setImportProgress(null);
+            }}
+            hitSlop={8}
+            style={[
+              styles.clearBtn,
+              {
+                borderColor: isDark ? 'rgba(56, 189, 248, 0.4)' : '#2563EB',
+                backgroundColor: isDark ? 'rgba(56, 189, 248, 0.12)' : 'rgba(37, 99, 235, 0.08)',
+              },
+            ]}
+          >
+            <Ionicons
+              name="cloud-download-outline"
+              size={13}
+              color={isDark ? '#38BDF8' : '#2563EB'}
+            />
+            <Text
+              style={[
+                styles.clearText,
+                { color: isDark ? '#38BDF8' : '#2563EB', fontWeight: '700' },
+              ]}
+            >
+              Import z uuBookKit
+            </Text>
+          </Pressable>
+
           {enrolledCount > 0 && (
             <Pressable
               onPress={handleAutoCacheEnrolled}
@@ -502,6 +594,36 @@ export function TextbooksScreen({ studentSubjects = [], studentIdentity = 'defau
                     </Text>
                   </View>
 
+                  {book.id.startsWith('uubook_') && (
+                    <View
+                      style={[
+                        styles.unicornPill,
+                        {
+                          backgroundColor: isDark
+                            ? 'rgba(56,189,248,0.14)'
+                            : '#EFF6FF',
+                          borderColor: isDark
+                            ? 'rgba(56,189,248,0.3)'
+                            : '#BFDBFE',
+                        },
+                      ]}
+                    >
+                      <Ionicons
+                        name="sparkles"
+                        size={11}
+                        color={isDark ? '#38BDF8' : '#2563EB'}
+                      />
+                      <Text
+                        style={[
+                          styles.unicornPillText,
+                          { color: isDark ? '#38BDF8' : '#2563EB' },
+                        ]}
+                      >
+                        Unicorn uuBookKit
+                      </Text>
+                    </View>
+                  )}
+
                   {isCached ? (
                     <View
                       style={[
@@ -649,6 +771,150 @@ export function TextbooksScreen({ studentSubjects = [], studentIdentity = 'defau
         cachedAt={readerCachedAt}
         onClose={() => setReaderVisible(false)}
       />
+
+      {/* Import Modal z Unicorn uuBookKit */}
+      <Modal
+        visible={importModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!isImporting) setImportModalVisible(false);
+        }}
+      >
+        <View style={styles.modalBackdrop}>
+          <View
+            style={[
+              styles.modalCard,
+              {
+                backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
+                borderColor: theme.border,
+              },
+            ]}
+          >
+            <View style={styles.modalHeaderRow}>
+              <View style={styles.modalTitleGroup}>
+                <Ionicons name="cloud-download" size={20} color={isDark ? '#38BDF8' : '#2563EB'} />
+                <Text style={[styles.modalTitle, { color: theme.text }]}>
+                  Import z Unicorn uuBookKit
+                </Text>
+              </View>
+              <Pressable
+                disabled={isImporting}
+                onPress={() => setImportModalVisible(false)}
+                hitSlop={10}
+                style={styles.modalCloseBtn}
+              >
+                <Ionicons name="close" size={20} color={theme.secondary} />
+              </Pressable>
+            </View>
+
+            <Text style={[styles.modalSubtitle, { color: theme.secondary }]}>
+              Zadej odkaz na učebnici ze školního portálu Unicorn, nebo vyber z doporučených materiálů:
+            </Text>
+
+            {/* Doporučené Unicorn knihy */}
+            <View style={styles.knownBooksWrap}>
+              <Text style={[styles.knownLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+                DOPORUČENÉ KNIHY UNICORN UNIVERSITY:
+              </Text>
+              {KNOWN_UNICORN_BOOKS.map((kb) => (
+                <Pressable
+                  key={kb.awid}
+                  disabled={isImporting}
+                  onPress={() => {
+                    setImportUrlOrAwid(kb.baseUri);
+                    handleImportBook(kb.baseUri);
+                  }}
+                  style={[
+                    styles.knownBookChip,
+                    {
+                      backgroundColor: isDark ? 'rgba(56,189,248,0.1)' : '#EFF6FF',
+                      borderColor: isDark ? 'rgba(56,189,248,0.25)' : '#BFDBFE',
+                    },
+                  ]}
+                >
+                  <Ionicons name="book" size={16} color={isDark ? '#38BDF8' : '#2563EB'} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.knownBookTitle, { color: theme.text }]}>{kb.title}</Text>
+                    <Text style={[styles.knownBookSub, { color: theme.secondary }]}>
+                      Kód: {kb.subjectCode} • AWID: {kb.awid.slice(0, 8)}...
+                    </Text>
+                  </View>
+                  <Ionicons name="arrow-forward" size={15} color={isDark ? '#38BDF8' : '#2563EB'} />
+                </Pressable>
+              ))}
+            </View>
+
+            {/* Ruční zadání URL nebo AWID */}
+            <View style={styles.inputSection}>
+              <Text style={[styles.inputLabel, { color: isDark ? '#CBD5E1' : '#475569' }]}>
+                Nebo vlož odkaz na uuBookKit či AWID:
+              </Text>
+              <TextInput
+                value={importUrlOrAwid}
+                onChangeText={setImportUrlOrAwid}
+                placeholder="https://uuapp.plus4u.net/uu-bookkit-maing01/<awid>/..."
+                placeholderTextColor={isDark ? '#475569' : '#94A3B8'}
+                editable={!isImporting}
+                style={[
+                  styles.importInput,
+                  {
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F8FAFC',
+                    borderColor: theme.border,
+                    color: theme.text,
+                  },
+                ]}
+              />
+            </View>
+
+            {/* Zobrazení průběhu stahování */}
+            {isImporting && (
+              <View style={styles.importProgressWrap}>
+                <ActivityIndicator size="small" color={isDark ? '#38BDF8' : '#2563EB'} />
+                <Text style={[styles.importProgressText, { color: theme.text }]}>
+                  {importProgress
+                    ? `Stahuji ${importProgress.done} z ${importProgress.total}: ${importProgress.title}...`
+                    : 'Navazuji spojení s Unicorn uuBookKit...'}
+                </Text>
+              </View>
+            )}
+
+            {/* Chybová zpráva */}
+            {importError && (
+              <View style={styles.importErrorWrap}>
+                <Ionicons name="alert-circle" size={16} color="#EF4444" />
+                <Text style={styles.importErrorText}>{importError}</Text>
+              </View>
+            )}
+
+            {/* Akční tlačítka */}
+            <View style={styles.modalActionRow}>
+              <Pressable
+                disabled={isImporting}
+                onPress={() => setImportModalVisible(false)}
+                style={[styles.modalCancelBtn, { borderColor: theme.border }]}
+              >
+                <Text style={[styles.modalCancelText, { color: theme.secondary }]}>Zavřít</Text>
+              </Pressable>
+
+              <Pressable
+                disabled={isImporting}
+                onPress={() => handleImportBook()}
+                style={[
+                  styles.modalConfirmBtn,
+                  { backgroundColor: isDark ? '#0284C7' : '#2563EB' },
+                  isImporting && { opacity: 0.6 },
+                ]}
+              >
+                <Ionicons name="download" size={15} color="#FFFFFF" />
+                <Text style={styles.modalConfirmText}>
+                  {isImporting ? 'Stahuji...' : 'Stáhnout učebnici'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -897,5 +1163,159 @@ const styles = StyleSheet.create({
   },
   emptySub: {
     fontSize: 12.5,
+  },
+
+  // Unicorn uuBookKit Badge
+  unicornPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+  },
+  unicornPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+
+  // Import Modal Styles
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 540,
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 22,
+    gap: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.35,
+    shadowRadius: 24,
+    elevation: 20,
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  modalTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  modalCloseBtn: {
+    padding: 4,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  knownBooksWrap: {
+    gap: 8,
+  },
+  knownLabel: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+  },
+  knownBookChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  knownBookTitle: {
+    fontSize: 13.5,
+    fontWeight: '700',
+  },
+  knownBookSub: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  inputSection: {
+    gap: 8,
+  },
+  inputLabel: {
+    fontSize: 12.5,
+    fontWeight: '600',
+  },
+  importInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+  },
+  importProgressWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: 'rgba(56, 189, 248, 0.08)',
+  },
+  importProgressText: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    flex: 1,
+  },
+  importErrorWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+  },
+  importErrorText: {
+    color: '#EF4444',
+    fontSize: 12.5,
+    fontWeight: '600',
+    flex: 1,
+  },
+  modalActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 4,
+  },
+  modalCancelBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  modalCancelText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  modalConfirmBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  modalConfirmText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

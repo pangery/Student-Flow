@@ -6,6 +6,7 @@ import { sampleTextbooks } from './sampleTextbooks';
 const KEY_META_PREFIX = 'studentflow.textbooks.meta.v2.';
 const KEY_NETWORK = 'studentflow.simulated.network.v1';
 const KEY_BOOK_PREFIX = 'studentflow.textbook.data.v2.';
+const KEY_CUSTOM_BOOKS_PREFIX = 'studentflow.textbooks.custom.v2.';
 const KEY_INTEGRITY_SALT = 'studentflow.textbook.sec_salt';
 const KEY_AUTO_CACHE_ENABLED = 'studentflow.textbooks.autocache.enabled.v1';
 
@@ -120,11 +121,64 @@ export const textbookService = {
   },
 
   /**
+   * Získá uživatelem importované knihy (např. z Unicorn uuBookKit)
+   */
+  async getCustomBooks(studentIdentity = 'default'): Promise<Textbook[]> {
+    try {
+      const key = `${KEY_CUSTOM_BOOKS_PREFIX}${studentIdentity}`;
+      const raw = await AsyncStorage.getItem(key);
+      if (!raw) return [];
+      return JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  },
+
+  /**
+   * Uloží importovanou knihu z uuBookKit do seznamu knih a rovnou ji stáhne offline
+   */
+  async saveImportedBook(book: Textbook, studentIdentity = 'default'): Promise<boolean> {
+    try {
+      const current = await this.getCustomBooks(studentIdentity);
+      const filtered = current.filter((b) => b.id !== book.id);
+      filtered.unshift(book);
+      const key = `${KEY_CUSTOM_BOOKS_PREFIX}${studentIdentity}`;
+      await AsyncStorage.setItem(key, JSON.stringify(filtered));
+
+      // Ihned uložit do zabezpečené offline cache
+      const salt = await this.getSecureSalt();
+      const serialized = JSON.stringify(book);
+      const checksum = computeContentHash(serialized, salt);
+
+      const bookKey = this.getBookKey(book.id, studentIdentity);
+      await AsyncStorage.setItem(bookKey, serialized);
+
+      const metaKey = this.getMetaKey(studentIdentity);
+      const meta = await this.getCachedMeta(studentIdentity);
+      meta[book.id] = {
+        textbookId: book.id,
+        cachedAt: new Date().toISOString(),
+        sizeKb: book.sizeKb,
+        version: book.version,
+        checksum,
+      };
+      await AsyncStorage.setItem(metaKey, JSON.stringify(meta));
+      return true;
+    } catch (e) {
+      console.error('Failed to save imported textbook', e);
+      return false;
+    }
+  },
+
+  /**
    * Získá všechny dostupné učebnice, volitelně filtrované nebo provázané se zapsanými předměty.
    */
-  async getAllTextbooks(studentSubjects: Subject[] = []): Promise<Textbook[]> {
+  async getAllTextbooks(studentSubjects: Subject[] = [], studentIdentity = 'default'): Promise<Textbook[]> {
+    const customBooks = await this.getCustomBooks(studentIdentity);
+    const combined = [...customBooks, ...sampleTextbooks];
+
     if (!studentSubjects || studentSubjects.length === 0) {
-      return sampleTextbooks;
+      return combined;
     }
 
     // Normalizace názvů předmětů pro spolehlivé spárování
@@ -136,7 +190,7 @@ export const textbookService = {
     );
     const enrolledNames = new Set(studentSubjects.map((s) => norm(s.name)));
 
-    return sampleTextbooks.map((book) => {
+    return combined.map((book) => {
       const matched =
         (book.code && enrolledCodes.has(norm(book.code))) ||
         enrolledNames.has(norm(book.subjectName)) ||
@@ -157,7 +211,8 @@ export const textbookService = {
     textbookId: string,
     studentIdentity = 'default'
   ): Promise<boolean> {
-    const book = sampleTextbooks.find((b) => b.id === textbookId);
+    const customBooks = await this.getCustomBooks(studentIdentity);
+    const book = [...customBooks, ...sampleTextbooks].find((b) => b.id === textbookId);
     if (!book) return false;
 
     try {
@@ -306,7 +361,8 @@ export const textbookService = {
 
     // Pokud není v cache (nebo selhal checksum), ale jsme online – načteme originál
     if (isOnline) {
-      const book = sampleTextbooks.find((b) => b.id === textbookId);
+      const customBooks = await this.getCustomBooks(studentIdentity);
+      const book = [...customBooks, ...sampleTextbooks].find((b) => b.id === textbookId);
       if (book) {
         return {
           textbook: book,
