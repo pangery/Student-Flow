@@ -243,3 +243,4 @@ Aplikace StudentFlow v současné verzi plně pokrývá potřeby studenta Unicor
 **Potenciální budoucí rozšíření:**
 1. Zavedení interaktivních systémových widgetů na plochu iOS a Androidu s využitím existujícího `widgetBridge.ts`.
 2. Doplnění přímého zápisu/odhlášení z termínů zkoušek v `uuBookingEngine` přímo z rozhraní aplikace po schválení oficiálního OIDC klienta školou.
+
