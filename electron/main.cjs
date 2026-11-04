@@ -117,6 +117,11 @@ async function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
+    mainWindow.focus();
+    if (process.platform === 'darwin' && app.dock) {
+      app.dock.show();
+      app.focus({ steal: true });
+    }
   });
 
   function handleOAuthRedirect(event, url) {
@@ -240,7 +245,11 @@ if (!gotTheLock) {
   app.on('second-instance', () => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
       mainWindow.focus();
+      if (process.platform === 'darwin') {
+        app.focus({ steal: true });
+      }
     }
   });
 
