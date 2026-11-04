@@ -117,6 +117,21 @@ export function Plus4ULoginModal({
     }
   };
 
+  const handleOpenBrowser = async () => {
+    if (Platform.OS === 'web') {
+      if (!authorizeUrl) return;
+      if (typeof window !== 'undefined' && (window as any).electronAPI?.openExternal) {
+        (window as any).electronAPI.openExternal(authorizeUrl);
+      } else {
+        Linking.openURL(authorizeUrl).catch(() => {
+          Alert.alert('Chyba', 'Nepodařilo se otevřít prohlížeč.');
+        });
+      }
+      return;
+    }
+    handleSystemBrowserLogin();
+  };
+
   return (
     <Modal
       visible={visible}
@@ -185,8 +200,8 @@ export function Plus4ULoginModal({
           </Pressable>
         </View>
 
-        {/* System Browser Quick Banner (if native module is available) */}
-        {isSystemAvailable && (
+        {/* System Browser Quick Banner */}
+        {(isSystemAvailable || Platform.OS === 'web') && (
           <View
             style={[
               styles.systemBanner,
@@ -218,13 +233,13 @@ export function Plus4ULoginModal({
                   { color: isDark ? 'rgba(255,255,255,0.7)' : '#0C4A6E' },
                 ]}
               >
-                Sdílí aktivní session z prohlížeče a podporuje přihlášení Google.
+                Sdílí aktivní přihlášení z prohlížeče nebo klíčenky Macu.
               </Text>
             </View>
 
             <Pressable
               disabled={browserBusy}
-              onPress={handleSystemBrowserLogin}
+              onPress={handleOpenBrowser}
               style={({ pressed }) => [
                 styles.systemBtn,
                 { backgroundColor: isDark ? '#38BDF8' : '#0284C7' },

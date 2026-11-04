@@ -7,4 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('oauth-code', handler);
     return () => ipcRenderer.removeListener('oauth-code', handler);
   },
+  openExternal: (url) => {
+    ipcRenderer.send('open-external', url);
+  },
 });

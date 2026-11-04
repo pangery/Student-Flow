@@ -13,7 +13,7 @@ if (typeof electronPkg === 'string') {
   return;
 }
 
-const { app, BrowserWindow, shell, Menu } = electronPkg;
+const { app, BrowserWindow, shell, Menu, session, ipcMain } = electronPkg;
 const path = require('node:path');
 const http = require('node:http');
 const fs = require('node:fs');
@@ -21,6 +21,7 @@ const fs = require('node:fs');
 let mainWindow;
 let localStaticServer;
 let localServerPort = 0;
+let oauthCallbackServer;
 
 const MIME_TYPES = {
   '.html': 'text/html',
@@ -82,6 +83,67 @@ function startLocalStaticServer(distDir) {
 
     server.on('error', reject);
   });
+}
+
+function startOAuthCallbackServer() {
+  const server = http.createServer((req, res) => {
+    try {
+      const parsedUrl = new URL(req.url, 'http://localhost:53682');
+      const code = parsedUrl.searchParams.get('code');
+      if (code) {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('oauth-code', code);
+          if (mainWindow.isMinimized()) mainWindow.restore();
+          mainWindow.show();
+          mainWindow.focus();
+          if (process.platform === 'darwin' && app.dock) {
+            app.dock.show();
+            app.focus({ steal: true });
+          }
+        }
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.end(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <meta charset="utf-8">
+              <title>Přihlášení úspěšné</title>
+              <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0F172A; color: #FFFFFF; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
+                .card { background: #1E293B; padding: 40px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1); max-width: 420px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); }
+                h1 { font-size: 22px; color: #38BDF8; margin-bottom: 12px; }
+                p { color: #94A3B8; font-size: 15px; margin: 0; line-height: 1.5; }
+              </style>
+            </head>
+            <body>
+              <div class="card">
+                <h1>✓ Přihlášení proběhlo úspěšně</h1>
+                <p>Můžete toto okno zavřít a pokračovat v aplikaci StudentFlow.</p>
+              </div>
+              <script>setTimeout(() => window.close(), 1200);</script>
+            </body>
+          </html>
+        `);
+        return;
+      }
+    } catch (e) {
+      console.error('Error handling OAuth callback request', e);
+    }
+    res.statusCode = 404;
+    res.end('Not found');
+  });
+
+  server.listen(53682, '127.0.0.1', () => {
+    // Port 53682 listening for Plus4U OIDC redirects
+  });
+
+  server.on('error', (err) => {
+    if (err.code !== 'EADDRINUSE') {
+      console.warn('OAuth callback server warning:', err);
+    }
+  });
+
+  return server;
 }
 
 async function createWindow() {
@@ -254,6 +316,53 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(async () => {
+    // 1. Strip headers preventing Plus4U from being embedded in iframes
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      const responseHeaders = { ...details.responseHeaders };
+      for (const key of Object.keys(responseHeaders)) {
+        const lower = key.toLowerCase();
+        if (
+          lower === 'x-frame-options' ||
+          lower === 'content-security-policy' ||
+          lower === 'content-security-policy-report-only'
+        ) {
+          delete responseHeaders[key];
+        }
+      }
+      callback({ cancel: false, responseHeaders });
+    });
+
+    // 2. Intercept OAuth redirect URLs across all frames and windows
+    session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
+      const url = details.url;
+      if (
+        url.startsWith('http://localhost:53682') ||
+        url.startsWith('studentflow://') ||
+        (url.includes('studentflow') && url.includes('code='))
+      ) {
+        try {
+          const parsed = new URL(url);
+          const code = parsed.searchParams.get('code');
+          if (code && mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('oauth-code', code);
+          }
+        } catch (err) {
+          console.error('Failed to parse OAuth redirect URL', err);
+        }
+        callback({ cancel: true });
+        return;
+      }
+      callback({ cancel: false });
+    });
+
+    // 3. Start localhost:53682 listener for system browser logins
+    oauthCallbackServer = startOAuthCallbackServer();
+
+    // 4. Register IPC handlers
+    ipcMain.on('open-external', (_event, url) => {
+      if (url) shell.openExternal(url);
+    });
+
     createMenu();
     await createWindow();
 
@@ -266,6 +375,9 @@ if (!gotTheLock) {
 app.on('window-all-closed', () => {
   if (localStaticServer) {
     localStaticServer.close();
+  }
+  if (oauthCallbackServer) {
+    oauthCallbackServer.close();
   }
   if (process.platform !== 'darwin') {
     app.quit();
