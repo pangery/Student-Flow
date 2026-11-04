@@ -142,11 +142,24 @@ Při stažení učebnice se obsah zabezpečuje:
 * Ukládání postupu studenta (tlačítko *Označit jako přečtené*).
 * Responzivní šířku (max 860 px), která zabraňuje nečitelně dlouhým řádkům na širokoúhlých monitorech.
 
+### 5.4 Napojení na reálný Unicorn uuBookKit
+Aplikace obsahuje přímé napojení na univerzitní systém **uuBookKit** (`src/services/bookKitService.ts`):
+* **Protokol uuCommandů:** Volá standardní rozhraní `loadBook` (veřejná metadata), `getBookStructure` (hierarchie kapitol vázaná na autorizaci) a `loadPage` (obsah jednotlivých stránek).
+* **Autorizace:** K požadavkům na chráněné stránky a strukturu se přikládá Bearer OIDC token přihlášeného studenta (se scope `https://`).
+* **LSI a řetězená struktura:** Zpracovává vícejazyčné texty (`cs`/`en`) a ze slovníku `itemMap` skládá přes vazby `previous` a `next` přesné pořadí kapitol (`toPageList`).
+* **Parsování uu5:** Bloky a sekce z formátu uu5string převádí na čistý text a kódové ukázky pro offline čtečku.
+* **Import libovolné knihy:** Student může zadat odkaz nebo 32místný AWID libovolné knihy ze školního portálu, případně vybrat z předpřipravených univerzitních knih. Kniha se stáhne, ověří a uloží do zabezpečené lokální mezipaměti.
+
 ---
 
 ## 6. Uživatelské rozhraní a platformní specifika
 
 Aplikace se plně přizpůsobuje specifikům jednotlivých platforem:
+
+### Desktop (macOS, Windows, Linux)
+* **Nativní levý navigační panel (Sidebar, šířka 240 px):** Nahrazuje mobilní spodní lištu. Obsahuje logo a název aplikace, označení univerzity, vertikální seznam záložek s aktivními indikátory a stavový panel synchronizace Plus4U.
+* **macOS Traffic Lights:** Respektuje umístění systémových tlačítek pro zavření/minimalizaci okna (`paddingTop: 44 px`).
+* **Roztažení obsahu:** Hlavní kontejner `Screen.tsx` dynamicky přechází z úzkého mobilního sloupce na plnohodnotný desktopový layout o šířce až 1380 px s odstraněným spodním odsazením určeným původně pro mobilní dock.
 
 ### iOS
 * Plovoucí dock navigační panel s efektem matného skla (`expo-blur` s intenzitou 75–90 %).
@@ -168,7 +181,7 @@ Aplikace se plně přizpůsobuje specifikům jednotlivých platforem:
 
 ## 7. Automatické testování a ověření kvality
 
-Projekt obsahuje sadu 28 automatických unit testů spouštěných přes nativní Node.js test runner (`node --test`), které pokrývají klíčovou business logiku:
+Projekt obsahuje sadu 31 automatických unit testů spouštěných přes nativní Node.js test runner (`node --test`), které pokrývají klíčovou business logiku:
 
 ```bash
 npm test
@@ -187,9 +200,11 @@ npm test
    * Striktní izolace – výsledky jiných studentů se nikdy nezobrazují přihlášenému uživateli.
    * Deduplikace certifikačních zkoušek a jejich podkroků.
    * Odolnost proti výpadkům sítě – zachování posledních platných dat.
-3. **Integrita učebnic (`tests/textbookSecurity.test.cjs`):**
-   * Deterministický výpočet FNV-1a hashe.
-   * Ukládání se solí a izolace mezipaměti per student.
+3. **Integrita učebnic a uuBookKit (`tests/textbookSecurity.test.cjs`, `tests/bookkit.test.cjs`):**
+   * Deterministický výpočet FNV-1a hashe se solí a izolace per student.
+   * Validace a parsování URL adres a AWID kódů z portálu Unicorn.
+   * Sestavení správného pořadí kapitol ze zřetězené struktury `itemMap` (`toPageList`).
+   * Parsování uu5string formátu (sekce, kódové ukázky a formátovaný text).
    * Automatické odmítnutí a invalidace mezipaměti při pokusu o podvržení či poškození obsahu.
 4. **Notifikace a widget bridge (`tests/notifications.test.cjs`, `tests/widgetBridge.test.cjs`):**
    * Generování snapshotu pro widgety (dnešní hodiny, nejbližší úkol a zkouška).

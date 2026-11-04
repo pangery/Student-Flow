@@ -521,6 +521,7 @@ export default function App() {
                 key={session?.uuIdentity ?? "anonymous"}
                 studentSubjects={data.subjects}
                 studentIdentity={session?.uuIdentity ?? "default"}
+                sessionToken={session?.idToken}
               />
             )}
           </Tab.Screen>
