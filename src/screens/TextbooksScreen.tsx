@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { Screen } from '../components/Screen';
 import { TextbookReaderModal } from '../components/TextbookReaderModal';
-import { bookKitService, KNOWN_UNICORN_BOOKS } from '../services/bookKitService';
+import { bookKitService, KNOWN_UNICORN_BOOKS, extractAllBookUrls } from '../services/bookKitService';
 import { sampleTextbooks } from '../services/sampleTextbooks';
 import { textbookService } from '../services/textbookService';
 import { isIOS } from '../theme/platform';
@@ -51,7 +51,9 @@ export function TextbooksScreen({ studentSubjects = [], studentIdentity = 'defau
 
   // Import from Unicorn uuBookKit modal
   const [importModalVisible, setImportModalVisible] = useState(false);
+  const [importMode, setImportMode] = useState<'single' | 'batch'>('batch');
   const [importUrlOrAwid, setImportUrlOrAwid] = useState('');
+  const [batchText, setBatchText] = useState('');
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number; title: string } | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
@@ -197,6 +199,60 @@ export function TextbooksScreen({ studentSubjects = [], studentIdentity = 'defau
       setImportError(err.message || 'Nastala chyba při stahování knihy z Unicornu.');
     } finally {
       setIsImporting(false);
+    }
+  };
+
+  const handleBatchImport = async () => {
+    const detected = extractAllBookUrls(batchText);
+    if (detected.length === 0) {
+      setImportError('V zadaném textu nebyly nalezeny žádné platné odkazy na uuBookKit ani kódy AWID.');
+      return;
+    }
+
+    setIsImporting(true);
+    setImportError(null);
+    setImportProgress({ done: 0, total: detected.length, title: 'Zahajuji stahování...' });
+
+    try {
+      const res = await bookKitService.batchImportBooks(
+        detected.map((d) => d.baseUri),
+        sessionToken,
+        studentIdentity,
+        studentSubjects,
+        (currentIdx, total, title) => {
+          setImportProgress({ done: currentIdx, total, title });
+        }
+      );
+
+      await refreshData();
+      setIsImporting(false);
+      setImportModalVisible(false);
+      setBatchText('');
+      setImportProgress(null);
+
+      Alert.alert(
+        'Automatické načtení dokončeno',
+        `Úspěšně staženo a offline uloženo: ${res.successful} z ${detected.length} učebnic.\n${
+          res.titles.length > 0 ? res.titles.map((t) => `• ${t}`).join('\n') : ''
+        }`
+      );
+    } catch (e: any) {
+      setImportError(e.message || 'Nastala chyba při hromadném stahování.');
+      setIsImporting(false);
+    }
+  };
+
+  const handlePasteClipboard = async () => {
+    try {
+      if (typeof navigator !== 'undefined' && (navigator as any).clipboard?.readText) {
+        const text = await (navigator as any).clipboard.readText();
+        if (text) {
+          setBatchText(text);
+          setImportError(null);
+        }
+      }
+    } catch {
+      // Prohlížeč může vyžadovat focus nebo explicitní oprávnění
     }
   };
 
@@ -808,64 +864,211 @@ export function TextbooksScreen({ studentSubjects = [], studentIdentity = 'defau
               </Pressable>
             </View>
 
-            <Text style={[styles.modalSubtitle, { color: theme.secondary }]}>
-              Zadej odkaz na učebnici ze školního portálu Unicorn, nebo vyber z doporučených materiálů:
-            </Text>
-
-            {/* Doporučené Unicorn knihy */}
-            <View style={styles.knownBooksWrap}>
-              <Text style={[styles.knownLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-                DOPORUČENÉ KNIHY UNICORN UNIVERSITY:
-              </Text>
-              {KNOWN_UNICORN_BOOKS.map((kb) => (
-                <Pressable
-                  key={kb.awid}
-                  disabled={isImporting}
-                  onPress={() => {
-                    setImportUrlOrAwid(kb.baseUri);
-                    handleImportBook(kb.baseUri);
-                  }}
+            {/* Přepínač režimu: Automatický sken vs Jeden odkaz */}
+            <View style={styles.modalTabRow}>
+              <Pressable
+                disabled={isImporting}
+                onPress={() => setImportMode('batch')}
+                style={[
+                  styles.modalTabBtn,
+                  importMode === 'batch' && {
+                    backgroundColor: isDark ? 'rgba(56, 189, 248, 0.15)' : '#EFF6FF',
+                    borderColor: isDark ? 'rgba(56, 189, 248, 0.35)' : '#BFDBFE',
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="flash-outline"
+                  size={14}
+                  color={importMode === 'batch' ? (isDark ? '#38BDF8' : '#2563EB') : theme.secondary}
+                />
+                <Text
                   style={[
-                    styles.knownBookChip,
+                    styles.modalTabText,
                     {
-                      backgroundColor: isDark ? 'rgba(56,189,248,0.1)' : '#EFF6FF',
-                      borderColor: isDark ? 'rgba(56,189,248,0.25)' : '#BFDBFE',
+                      color: importMode === 'batch' ? (isDark ? '#38BDF8' : '#2563EB') : theme.secondary,
+                      fontWeight: importMode === 'batch' ? '700' : '500',
                     },
                   ]}
                 >
-                  <Ionicons name="book" size={16} color={isDark ? '#38BDF8' : '#2563EB'} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.knownBookTitle, { color: theme.text }]}>{kb.title}</Text>
-                    <Text style={[styles.knownBookSub, { color: theme.secondary }]}>
-                      Kód: {kb.subjectCode} • AWID: {kb.awid.slice(0, 8)}...
-                    </Text>
-                  </View>
-                  <Ionicons name="arrow-forward" size={15} color={isDark ? '#38BDF8' : '#2563EB'} />
-                </Pressable>
-              ))}
-            </View>
+                  ⚡️ Automatický sken (všechny)
+                </Text>
+              </Pressable>
 
-            {/* Ruční zadání URL nebo AWID */}
-            <View style={styles.inputSection}>
-              <Text style={[styles.inputLabel, { color: isDark ? '#CBD5E1' : '#475569' }]}>
-                Nebo vlož odkaz na uuBookKit či AWID:
-              </Text>
-              <TextInput
-                value={importUrlOrAwid}
-                onChangeText={setImportUrlOrAwid}
-                placeholder="https://uuapp.plus4u.net/uu-bookkit-maing01/<awid>/..."
-                placeholderTextColor={isDark ? '#475569' : '#94A3B8'}
-                editable={!isImporting}
+              <Pressable
+                disabled={isImporting}
+                onPress={() => setImportMode('single')}
                 style={[
-                  styles.importInput,
-                  {
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F8FAFC',
-                    borderColor: theme.border,
-                    color: theme.text,
+                  styles.modalTabBtn,
+                  importMode === 'single' && {
+                    backgroundColor: isDark ? 'rgba(56, 189, 248, 0.15)' : '#EFF6FF',
+                    borderColor: isDark ? 'rgba(56, 189, 248, 0.35)' : '#BFDBFE',
                   },
                 ]}
-              />
+              >
+                <Ionicons
+                  name="link-outline"
+                  size={14}
+                  color={importMode === 'single' ? (isDark ? '#38BDF8' : '#2563EB') : theme.secondary}
+                />
+                <Text
+                  style={[
+                    styles.modalTabText,
+                    {
+                      color: importMode === 'single' ? (isDark ? '#38BDF8' : '#2563EB') : theme.secondary,
+                      fontWeight: importMode === 'single' ? '700' : '500',
+                    },
+                  ]}
+                >
+                  Jeden odkaz / AWID
+                </Text>
+              </Pressable>
             </View>
+
+            {importMode === 'batch' ? (
+              <View style={{ gap: 10 }}>
+                <Text style={[styles.modalSubtitle, { color: theme.secondary }]}>
+                  Zkopíruj ze školního portálu Plus4U celou stránku předmětů nebo studijních materiálů (Ctrl+A &rarr; Ctrl+C) a vlož ji sem. Aplikace sama vyextrahuje všechny učebnice a postahuje je.
+                </Text>
+
+                <View style={styles.batchActionRow}>
+                  <Pressable
+                    disabled={isImporting}
+                    onPress={handlePasteClipboard}
+                    style={[
+                      styles.pasteBtn,
+                      {
+                        backgroundColor: isDark ? 'rgba(56,189,248,0.1)' : '#EFF6FF',
+                        borderColor: isDark ? 'rgba(56,189,248,0.3)' : '#BFDBFE',
+                      },
+                    ]}
+                  >
+                    <Ionicons name="clipboard-outline" size={14} color={isDark ? '#38BDF8' : '#2563EB'} />
+                    <Text style={[styles.pasteBtnText, { color: isDark ? '#38BDF8' : '#2563EB' }]}>
+                      Vložit ze schránky
+                    </Text>
+                  </Pressable>
+
+                  {batchText.trim().length > 0 && (
+                    <View
+                      style={[
+                        styles.detectedPill,
+                        {
+                          backgroundColor:
+                            extractAllBookUrls(batchText).length > 0
+                              ? isDark
+                                ? 'rgba(16,185,129,0.15)'
+                                : '#ECFDF5'
+                              : isDark
+                              ? 'rgba(239,68,68,0.1)'
+                              : '#FEF2F2',
+                          borderColor:
+                            extractAllBookUrls(batchText).length > 0 ? '#10B981' : '#EF4444',
+                        },
+                      ]}
+                    >
+                      <Ionicons
+                        name={extractAllBookUrls(batchText).length > 0 ? 'checkmark-circle' : 'alert-circle'}
+                        size={13}
+                        color={extractAllBookUrls(batchText).length > 0 ? '#10B981' : '#EF4444'}
+                      />
+                      <Text
+                        style={[
+                          styles.detectedPillText,
+                          {
+                            color:
+                              extractAllBookUrls(batchText).length > 0 ? '#10B981' : '#EF4444',
+                          },
+                        ]}
+                      >
+                        {extractAllBookUrls(batchText).length > 0
+                          ? `Nalezeno ${extractAllBookUrls(batchText).length} učebnic`
+                          : 'V textu nebyl nalezen odkaz uuBookKit'}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                <TextInput
+                  value={batchText}
+                  onChangeText={setBatchText}
+                  multiline
+                  numberOfLines={4}
+                  placeholder="Sem vlož text ze stránky předmětů, seznam odkazů nebo zdrojový kód..."
+                  placeholderTextColor={isDark ? '#475569' : '#94A3B8'}
+                  editable={!isImporting}
+                  style={[
+                    styles.batchInput,
+                    {
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F8FAFC',
+                      borderColor: theme.border,
+                      color: theme.text,
+                    },
+                  ]}
+                />
+              </View>
+            ) : (
+              <View style={{ gap: 12 }}>
+                <Text style={[styles.modalSubtitle, { color: theme.secondary }]}>
+                  Zadej odkaz na učebnici ze školního portálu Unicorn, nebo vyber z doporučených materiálů:
+                </Text>
+
+                {/* Doporučené Unicorn knihy */}
+                <View style={styles.knownBooksWrap}>
+                  <Text style={[styles.knownLabel, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+                    DOPORUČENÉ KNIHY UNICORN UNIVERSITY:
+                  </Text>
+                  {KNOWN_UNICORN_BOOKS.map((kb) => (
+                    <Pressable
+                      key={kb.awid}
+                      disabled={isImporting}
+                      onPress={() => {
+                        setImportUrlOrAwid(kb.baseUri);
+                        handleImportBook(kb.baseUri);
+                      }}
+                      style={[
+                        styles.knownBookChip,
+                        {
+                          backgroundColor: isDark ? 'rgba(56,189,248,0.1)' : '#EFF6FF',
+                          borderColor: isDark ? 'rgba(56,189,248,0.25)' : '#BFDBFE',
+                        },
+                      ]}
+                    >
+                      <Ionicons name="book" size={16} color={isDark ? '#38BDF8' : '#2563EB'} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.knownBookTitle, { color: theme.text }]}>{kb.title}</Text>
+                        <Text style={[styles.knownBookSub, { color: theme.secondary }]}>
+                          Kód: {kb.subjectCode} • AWID: {kb.awid.slice(0, 8)}...
+                        </Text>
+                      </View>
+                      <Ionicons name="arrow-forward" size={15} color={isDark ? '#38BDF8' : '#2563EB'} />
+                    </Pressable>
+                  ))}
+                </View>
+
+                {/* Ruční zadání URL nebo AWID */}
+                <View style={styles.inputSection}>
+                  <Text style={[styles.inputLabel, { color: isDark ? '#CBD5E1' : '#475569' }]}>
+                    Nebo vlož odkaz na uuBookKit či AWID:
+                  </Text>
+                  <TextInput
+                    value={importUrlOrAwid}
+                    onChangeText={setImportUrlOrAwid}
+                    placeholder="https://uuapp.plus4u.net/uu-bookkit-maing01/<awid>/..."
+                    placeholderTextColor={isDark ? '#475569' : '#94A3B8'}
+                    editable={!isImporting}
+                    style={[
+                      styles.importInput,
+                      {
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F8FAFC',
+                        borderColor: theme.border,
+                        color: theme.text,
+                      },
+                    ]}
+                  />
+                </View>
+              </View>
+            )}
 
             {/* Zobrazení průběhu stahování */}
             {isImporting && (
@@ -898,17 +1101,23 @@ export function TextbooksScreen({ studentSubjects = [], studentIdentity = 'defau
               </Pressable>
 
               <Pressable
-                disabled={isImporting}
-                onPress={() => handleImportBook()}
+                disabled={isImporting || (importMode === 'batch' && extractAllBookUrls(batchText).length === 0)}
+                onPress={() => (importMode === 'batch' ? handleBatchImport() : handleImportBook())}
                 style={[
                   styles.modalConfirmBtn,
                   { backgroundColor: isDark ? '#0284C7' : '#2563EB' },
-                  isImporting && { opacity: 0.6 },
+                  (isImporting || (importMode === 'batch' && extractAllBookUrls(batchText).length === 0)) && {
+                    opacity: 0.5,
+                  },
                 ]}
               >
                 <Ionicons name="download" size={15} color="#FFFFFF" />
                 <Text style={styles.modalConfirmText}>
-                  {isImporting ? 'Stahuji...' : 'Stáhnout učebnici'}
+                  {isImporting
+                    ? 'Stahuji...'
+                    : importMode === 'batch'
+                    ? `Automaticky načíst vše (${extractAllBookUrls(batchText).length})`
+                    : 'Stáhnout učebnici'}
                 </Text>
               </Pressable>
             </View>
@@ -1317,5 +1526,68 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
+  },
+
+  // Batch Automation Styles
+  modalTabRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  modalTabBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  modalTabText: {
+    fontSize: 12,
+  },
+  batchActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+  pasteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  pasteBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  detectedPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  detectedPillText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  batchInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 12.5,
+    minHeight: 88,
+    textAlignVertical: 'top',
   },
 });

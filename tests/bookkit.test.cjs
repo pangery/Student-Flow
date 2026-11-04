@@ -126,3 +126,36 @@ test('parseUu5Sections strips XML tags and produces clean chapter sections and c
   assert.equal(sections[0].body, 'Základní principy komunikace mezi službami.');
   assert.equal(sections[0].codeSnippet, 'const app = express();');
 });
+
+test('extractAllBookUrls detects multiple uuBookKit URLs and AWIDs from arbitrary page text', () => {
+  function extractAllBookUrls(textOrHtml) {
+    if (!textOrHtml) return [];
+    const regex = /(?:https:\/\/[^/\s"'`\<\>]+\/uu-bookkit-maing01\/([0-9a-fA-F]{32})|[0-9a-fA-F]{32})/gi;
+    const found = new Map();
+    let m;
+    while ((m = regex.exec(textOrHtml)) !== null) {
+      const awid = (m[1] || m[0]).toLowerCase();
+      if (!found.has(awid)) {
+        found.set(awid, {
+          awid,
+          baseUri: `https://uuapp.plus4u.net/uu-bookkit-maing01/${awid}/`,
+        });
+      }
+    }
+    return Array.from(found.values());
+  }
+
+  const rawText = `
+  Seznam materiálů:
+  1. Databáze: https://uuapp.plus4u.net/uu-bookkit-maing01/11112222333344445555666677778888/book
+  2. Architektury: https://uuapp.plus4u.net/uu-bookkit-maing01/aaaabbbbccccddddeeeeffff00001111/
+  3. AWID pouze: 99998888777766665555444433332222
+  `;
+
+  const extracted = extractAllBookUrls(rawText);
+  assert.equal(extracted.length, 3);
+  assert.equal(extracted[0].awid, '11112222333344445555666677778888');
+  assert.equal(extracted[1].awid, 'aaaabbbbccccddddeeeeffff00001111');
+  assert.equal(extracted[2].awid, '99998888777766665555444433332222');
+});
+
