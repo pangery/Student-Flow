@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { BottomSheet } from '../components/BottomSheet';
@@ -46,6 +47,8 @@ export function ExamScreen({
   const theme = useAppTheme();
   const isDark = theme.isDark;
   const dynamicThemes = getSubjectThemes(isDark);
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 1024;
 
   const currentSemester = useMemo(() => getSemesterForDate(), []);
   const [semesterScope, setSemesterScope] = useState<'current' | 'all'>('current');
@@ -601,7 +604,10 @@ export function ExamScreen({
         </ScrollView>
       )}
 
-      {/* 5. Active Exam Countdown Hero Card */}
+      <View style={isDesktop ? styles.desktopTwoColContainer : undefined}>
+        {/* Levý sloupec na Desktopu (Countdown karta + Checklist + Termíny) */}
+        <View style={isDesktop ? styles.desktopLeftCol : undefined}>
+          {/* 5. Active Exam Countdown Hero Card */}
       {activeExam ? (
         <LinearGradient
           colors={
@@ -1143,8 +1149,11 @@ export function ExamScreen({
           </Pressable>
         </View>
       )}
+        </View>
 
-      {/* 8. Semester Exam Timeline / Full List */}
+        {/* Pravý sloupec na Desktopu (Harmonogram zkoušek v semestru) */}
+        <View style={isDesktop ? styles.desktopRightCol : undefined}>
+          {/* 8. Semester Exam Timeline / Full List */}
       {sortedExams.length > 0 && (
         <View style={styles.timelineSection}>
           <Text style={[styles.timelineSectionTitle, { color: theme.text }]}>
@@ -1307,6 +1316,8 @@ export function ExamScreen({
           </View>
         </View>
       )}
+        </View>
+      </View>
 
       {/* 9. Modal for adding new exam */}
       <BottomSheet visible={addModalVisible} onClose={() => setAddModalVisible(false)}>
@@ -2121,5 +2132,23 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
+  },
+
+  // Dvoulícní responzivní desktop layout
+  desktopTwoColContainer: {
+    flexDirection: 'row',
+    gap: 20,
+    alignItems: 'flex-start',
+    width: '100%',
+  },
+  desktopLeftCol: {
+    flex: 6,
+    minWidth: 0,
+    gap: 16,
+  },
+  desktopRightCol: {
+    flex: 5,
+    minWidth: 0,
+    gap: 16,
   },
 });

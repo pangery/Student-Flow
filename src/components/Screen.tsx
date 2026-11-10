@@ -1,5 +1,5 @@
 import type { PropsWithChildren } from 'react';
-import { ScrollView, StyleSheet, useWindowDimensions } from 'react-native';
+import { Platform, ScrollView, StyleSheet, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isIOS, isWeb } from '../theme/platform';
 import { useAppTheme, spacing } from '../theme/theme';
@@ -11,22 +11,34 @@ export function Screen({ children }: PropsWithChildren) {
   const isDesktop = isWeb && width >= 800;
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: theme.background }]} edges={['top', 'left', 'right']}>
+    <SafeAreaView
+      style={[
+        styles.safe,
+        {
+          backgroundColor: theme.background,
+          paddingLeft: isDesktop ? 240 : 0,
+        },
+      ]}
+      edges={['top', 'left', 'right']}
+    >
       <ScrollView
         contentContainerStyle={[
           styles.content,
           {
-            paddingLeft: isDesktop ? 260 : spacing.md,
-            paddingRight: isDesktop ? spacing.xl : spacing.md,
-            paddingBottom: isDesktop ? spacing.xl : (isIOS || isWeb ? insets.bottom + 108 : spacing.lg),
-            maxWidth: isDesktop ? 1380 : (isWeb ? 1040 : 760),
-            alignSelf: isDesktop ? 'stretch' : 'center',
+            paddingHorizontal: isDesktop ? spacing.xl : spacing.md,
+            paddingTop: isDesktop ? 26 : spacing.xs,
+            paddingBottom: isDesktop ? 40 : (isIOS || isWeb ? insets.bottom + 108 : spacing.lg),
+            maxWidth: isDesktop ? 1440 : (isWeb ? 1040 : 760),
+            alignSelf: 'center',
+            width: '100%',
           },
         ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         automaticallyAdjustKeyboardInsets
         showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        removeClippedSubviews={Platform.OS === 'android'}
         overScrollMode={isIOS ? 'always' : 'never'}
         bounces={isIOS}
       >
@@ -37,14 +49,13 @@ export function Screen({ children }: PropsWithChildren) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
+  safe: {
+    flex: 1,
+  },
   content: {
     width: '100%',
-    maxWidth: isWeb ? 1040 : 760,
     alignSelf: 'center',
     flexGrow: 1,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.xs,
     gap: spacing.md,
   },
 });

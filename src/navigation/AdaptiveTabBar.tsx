@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
@@ -6,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isIOS, isWeb } from '../theme/platform';
 import { colors, radius, useAppTheme } from '../theme/theme';
 
-export function AdaptiveTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+export const AdaptiveTabBar = memo(function AdaptiveTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const theme = useAppTheme();
@@ -343,7 +344,7 @@ export function AdaptiveTabBar({ state, descriptors, navigation }: BottomTabBarP
       </View>
     </View>
   );
-}
+});
 
 function getIOSIcon(name: string, focused: boolean): keyof typeof Ionicons.glyphMap {
   if (name === 'Přehled') return focused ? 'grid' : 'grid-outline';
@@ -468,6 +469,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     width: 240,
+    height: '100%' as any,
     borderRightWidth: 1,
     zIndex: 99,
     flexDirection: 'column',

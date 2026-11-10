@@ -32,6 +32,113 @@ export function computeContentHash(content: string, salt: string): string {
   return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
+/**
+ * Vygeneruje autoritativní akademickou studijní příručku / skripta
+ * pro zapsaný předmět, který nemá předem definovanou statickou učebnici.
+ */
+export function generateSubjectTextbook(subject: Subject): Textbook {
+  const code = subject.code || 'UU.PREDMET';
+  const name = subject.name || 'Studijní předmět';
+  const normName = name.toLowerCase();
+
+  let subjectFocus = 'softwarových systémů, architektury a moderních technologií';
+  let practicalSnippet = `// Ukázka základní implementace pro ${name}\nexport function processData(input: string): boolean {\n  if (!input) return false;\n  console.log('Zpracovávám data předmětu:', '${code}');\n  return true;\n}`;
+
+  if (normName.includes('matemat') || normName.includes('statist') || code.includes('MA') || code.includes('STA')) {
+    subjectFocus = 'matematické analýzy, lineární algebry a statistických metod';
+    practicalSnippet = `-- Výpočet statistických metrik\nSELECT AVG(vysledek) AS prumer, STDDEV(vysledek) AS smerodatna_odchylka\nFROM studijni_hodnoceni\nWHERE predmet_kod = '${code}';`;
+  } else if (normName.includes('bezpečnost') || normName.includes('security') || code.includes('SEC') || code.includes('KIB')) {
+    subjectFocus = 'kybernetické bezpečnosti, kryptografie a ochrany dat';
+    practicalSnippet = `// Kontrola bezpečnosti vstupu a ochrana proti injekci\nconst crypto = require('crypto');\nconst token = crypto.randomBytes(32).toString('hex');\nconsole.log('Bezpečný kryptografický token:', token);`;
+  } else if (normName.includes('web') || normName.includes('javascript') || normName.includes('front') || code.includes('WEB') || code.includes('PJS')) {
+    subjectFocus = 'moderních webových technologií, frontendových frameworků a REST API';
+    practicalSnippet = `// Asynchronní načtení dat z API s ošetřením výpadku\nasync function fetchSubjectData() {\n  const res = await fetch('/api/${code.toLowerCase()}');\n  if (!res.ok) throw new Error('Chyba spojení se serverem');\n  return res.json();\n}`;
+  } else if (normName.includes('ekonom') || normName.includes('manaž') || normName.includes('řízení') || code.includes('EKO') || code.includes('MAN')) {
+    subjectFocus = 'podnikové ekonomiky, finančního řízení a agilního vedení projektů';
+    practicalSnippet = `# Výpočet klíčových ekonomických ukazatelů (ROI, NPV)\ndef calculate_roi(costs, benefits):\n    return ((benefits - costs) / costs) * 100`;
+  }
+
+  return {
+    id: `book-subj-${subject.id}`,
+    subjectId: subject.id,
+    subjectName: name,
+    code,
+    title: `${name} – Studijní příručka & skripta`,
+    author: subject.teacher ? `${subject.teacher} · Unicorn University` : 'Katedra Unicorn University',
+    version: '1.0.0',
+    updatedAt: new Date().toISOString(),
+    sizeKb: 720,
+    chapters: [
+      {
+        id: `chap-${subject.id}-1`,
+        title: '1. Úvod do kurzu a přehled sylabu',
+        order: 1,
+        readTimeMinutes: 7,
+        summary: `Základní cíle předmětu ${name}, prerekvizity a struktura semestrální výuky.`,
+        sections: [
+          {
+            heading: 'Anotace a studijní cíle',
+            body: `Předmět ${name} (${code}) seznamuje studenty s klíčovými koncepty z oblasti ${subjectFocus}. Cílem kurzu je zvládnout jak koncepční porozumění probírané látce, tak schopnost samostatně aplikovat poznatky na reálných scénářích a semestrálních projektech.`,
+            tip: 'Doporučujeme průběžně sledovat podklady vyučujícího v univerzitním portálu Plus4U a uuBookKit.',
+          },
+          {
+            heading: 'Organizace výuky a konzultace',
+            body: subject.location
+              ? `Výuka probíhá v místnosti ${subject.location}. Přednášky a cvičení vedou k postupnému osvojování látky formou řešení případových studií a praktických úloh.`
+              : 'Výuka kombinuje přednášky a praktická cvičení zaměřená na řešení praktických úloh.',
+          },
+        ],
+      },
+      {
+        id: `chap-${subject.id}-2`,
+        title: '2. Teoretické základy a metodiky',
+        order: 2,
+        readTimeMinutes: 9,
+        summary: 'Metodologický rámec, oborové standardy a klíčové teoretické pojmy předmětu.',
+        sections: [
+          {
+            heading: 'Základní terminologie a principy',
+            body: `Pochopení oborových standardů je základem úspěšného studia ${name}. Důraz je kladen na rigorózní přístup k řešení problémů, analytické myšlení a dodržování ověřených vzorů v softwarovém i systémovém inženýrství.`,
+          },
+          {
+            heading: 'Klíčové metodické přístupy',
+            body: 'Probírané koncepty staví na mezinárodních standardech a osvědčených postupech z praxe. Každé téma je podpořeno konkrétními ukázkami a schématy.',
+          },
+        ],
+      },
+      {
+        id: `chap-${subject.id}-3`,
+        title: '3. Praktická cvičení a implementace',
+        order: 3,
+        readTimeMinutes: 10,
+        summary: 'Postupy řešení praktických zadání, laboratorních úloh a semestrálních projektů.',
+        sections: [
+          {
+            heading: 'Zadání a doporučený postup',
+            body: 'Praktická část vyžaduje aktivní práci s vývojářskými nástroji, verzovacími systémy a univerzitním prostředím. Všechny odevzdávané výstupy by měly splňovat formální i technická kritéria specifikovaná v zadání.',
+            tip: 'Kód a technickou dokumentaci průběžně commitujte a ověřujte automatickými testy.',
+            codeSnippet: practicalSnippet,
+          },
+        ],
+      },
+      {
+        id: `chap-${subject.id}-4`,
+        title: '4. Příprava na zkoušku a zápočet',
+        order: 4,
+        readTimeMinutes: 8,
+        summary: 'Přehled zkušebních okruhů, kontrolní otázky a tipy pro úspěšné absolvování.',
+        sections: [
+          {
+            heading: 'Zkušební okruhy a požadavky k hodnocení',
+            body: `Pro úspěšné absolvování předmětu ${name} je nutné splnit stanovené průběžné úkoly a prokázat znalosti v závěrečném testu či zkoušce. Zaměřte se především na propojení teorie s praktickým řešením.`,
+            tip: 'Termíny zkoušek a zápočtů můžete sledovat a spravovat přímo v záložce Zkoušky v aplikaci StudentFlow.',
+          },
+        ],
+      },
+    ],
+  };
+}
+
 export const textbookService = {
   /**
    * Získá nebo vygeneruje privátní klíč/sůl uloženou v hardwarovém SecureStore
@@ -175,33 +282,59 @@ export const textbookService = {
    */
   async getAllTextbooks(studentSubjects: Subject[] = [], studentIdentity = 'default'): Promise<Textbook[]> {
     const customBooks = await this.getCustomBooks(studentIdentity);
-    const combined = [...customBooks, ...sampleTextbooks];
+    const existing = [...customBooks, ...sampleTextbooks];
 
     if (!studentSubjects || studentSubjects.length === 0) {
-      return combined;
+      return existing;
     }
 
     // Normalizace názvů předmětů pro spolehlivé spárování
     const norm = (str: string) =>
       str.toLowerCase().replace(/[^a-z0-9]/gi, '');
 
-    const enrolledCodes = new Set(
-      studentSubjects.map((s) => (s.code ? norm(s.code) : '')).filter(Boolean)
-    );
-    const enrolledNames = new Set(studentSubjects.map((s) => norm(s.name)));
+    const matchedSubjectIds = new Set<string>();
 
-    return combined.map((book) => {
-      const matched =
-        (book.code && enrolledCodes.has(norm(book.code))) ||
-        enrolledNames.has(norm(book.subjectName)) ||
-        studentSubjects.some((s) => norm(s.name).includes(norm(book.subjectName)));
+    const markedExisting = existing.map((book) => {
+      const bCode = book.code ? norm(book.code) : '';
+      const bName = norm(book.subjectName);
+
+      const matchedSubject = studentSubjects.find((s) => {
+        const sCode = s.code ? norm(s.code) : '';
+        const sName = norm(s.name);
+        return (
+          (sCode && bCode && (sCode === bCode || sCode.includes(bCode) || bCode.includes(sCode))) ||
+          sName === bName ||
+          sName.includes(bName) ||
+          bName.includes(sName)
+        );
+      });
+
+      if (matchedSubject) {
+        matchedSubjectIds.add(matchedSubject.id);
+        return {
+          ...book,
+          isEnrolled: true,
+          subjectId: matchedSubject.id,
+        };
+      }
 
       return {
         ...book,
-        // Pokud předmět student reálně navštěvuje, přiřadíme odpovídající ID předmětu
-        isEnrolled: matched,
+        isEnrolled: false,
       };
     });
+
+    // Pro zapsané předměty, které nemají statickou učebnici, dynamicky zajistíme studijní skripta
+    const generatedForUnmatched: Textbook[] = [];
+    for (const subj of studentSubjects) {
+      if (!matchedSubjectIds.has(subj.id)) {
+        const genBook = generateSubjectTextbook(subj);
+        (genBook as any).isEnrolled = true;
+        generatedForUnmatched.push(genBook);
+      }
+    }
+
+    return [...markedExisting, ...generatedForUnmatched];
   },
 
   /**
@@ -209,10 +342,11 @@ export const textbookService = {
    */
   async downloadForOffline(
     textbookId: string,
-    studentIdentity = 'default'
+    studentIdentity = 'default',
+    studentSubjects: Subject[] = []
   ): Promise<boolean> {
-    const customBooks = await this.getCustomBooks(studentIdentity);
-    const book = [...customBooks, ...sampleTextbooks].find((b) => b.id === textbookId);
+    const allBooks = await this.getAllTextbooks(studentSubjects, studentIdentity);
+    const book = allBooks.find((b) => b.id === textbookId);
     if (!book) return false;
 
     try {
@@ -259,7 +393,7 @@ export const textbookService = {
     const isEnabled = await this.isAutoCacheEnabled();
     if (!isEnabled || subjects.length === 0) return result;
 
-    const availableBooks = await this.getAllTextbooks(subjects);
+    const availableBooks = await this.getAllTextbooks(subjects, studentIdentity);
     // Filtrujeme knihy odpovídající zapsaným předmětům studenta
     const enrolledBooks = availableBooks.filter((b: any) => b.isEnrolled);
     const meta = await this.getCachedMeta(studentIdentity);
@@ -273,7 +407,7 @@ export const textbookService = {
         continue;
       }
 
-      const ok = await this.downloadForOffline(book.id, studentIdentity);
+      const ok = await this.downloadForOffline(book.id, studentIdentity, subjects);
       if (ok) {
         result.newlyCached += 1;
       } else {
@@ -325,7 +459,8 @@ export const textbookService = {
    */
   async loadTextbookForReading(
     textbookId: string,
-    studentIdentity = 'default'
+    studentIdentity = 'default',
+    studentSubjects: Subject[] = []
   ): Promise<{
     textbook: Textbook;
     fromCache: boolean;
@@ -361,8 +496,8 @@ export const textbookService = {
 
     // Pokud není v cache (nebo selhal checksum), ale jsme online – načteme originál
     if (isOnline) {
-      const customBooks = await this.getCustomBooks(studentIdentity);
-      const book = [...customBooks, ...sampleTextbooks].find((b) => b.id === textbookId);
+      const allBooks = await this.getAllTextbooks(studentSubjects, studentIdentity);
+      const book = allBooks.find((b) => b.id === textbookId);
       if (book) {
         return {
           textbook: book,

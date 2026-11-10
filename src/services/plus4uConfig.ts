@@ -14,7 +14,7 @@ export const OIDC_CLIENT_SECRET =
   "2u1q5KU2Z0Bs5SErmYVwM053+zyKDxT7QLU2Q7Rr7nn5t5%Bt80px8mf3$s16FdK";
 
 /** "https://" jako audience = token je použitelný pro libovolnou https uuApp (např. uuPlus4UPeople i uuDwRecord). */
-export const OIDC_SCOPE = "openid https:// http://localhost";
+export const OIDC_SCOPE = "openid offline_access https:// http://localhost";
 
 /**
  * Na tuto adresu OIDC server po přihlášení přesměruje.

@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,15 +10,17 @@ import {
   Switch,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { Screen } from '../components/Screen';
 import { TextbookReaderModal } from '../components/TextbookReaderModal';
 import { bookKitService, KNOWN_UNICORN_BOOKS, extractAllBookUrls } from '../services/bookKitService';
+import { cleanSubjectName } from '../services/schoolDisplay';
 import { sampleTextbooks } from '../services/sampleTextbooks';
 import { textbookService } from '../services/textbookService';
 import { isIOS } from '../theme/platform';
-import { colors, radius, useAppTheme } from '../theme/theme';
+import { colors, getSubjectThemes, radius, useAppTheme } from '../theme/theme';
 import type { CachedTextbookMeta, Textbook } from '../types/models';
 
 type FilterType = 'all' | 'enrolled' | 'cached' | 'available';
@@ -32,6 +34,9 @@ type Props = {
 export function TextbooksScreen({ studentSubjects = [], studentIdentity = 'default', sessionToken }: Props) {
   const theme = useAppTheme();
   const isDark = theme.isDark;
+  const dynamicThemes = useMemo(() => getSubjectThemes(isDark), [isDark]);
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 900;
 
   const [textbooks, setTextbooks] = useState<Textbook[]>([]);
   const [cachedMeta, setCachedMeta] = useState<Record<string, CachedTextbookMeta>>({});
@@ -42,6 +47,7 @@ export function TextbooksScreen({ studentSubjects = [], studentIdentity = 'defau
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('all');
 
   // Active Reader Modal state
   const [readerVisible, setReaderVisible] = useState(false);
@@ -109,7 +115,7 @@ export function TextbooksScreen({ studentSubjects = [], studentIdentity = 'defau
     }
     setDownloadingId(book.id);
     setTimeout(async () => {
-      const ok = await textbookService.downloadForOffline(book.id, studentIdentity);
+      const ok = await textbookService.downloadForOffline(book.id, studentIdentity, studentSubjects);
       setDownloadingId(null);
       if (ok) {
         await refreshData();
@@ -136,7 +142,7 @@ export function TextbooksScreen({ studentSubjects = [], studentIdentity = 'defau
   };
 
   const handleOpenReader = async (book: Textbook) => {
-    const result = await textbookService.loadTextbookForReading(book.id, studentIdentity);
+    const result = await textbookService.loadTextbookForReading(book.id, studentIdentity, studentSubjects);
     if (!result) {
       Alert.alert(
         'Kniha není stažena',
@@ -256,30 +262,133 @@ export function TextbooksScreen({ studentSubjects = [], studentIdentity = 'defau
     }
   };
 
-  const cachedCount = textbooks.filter(book => cachedMeta[book.id]).length;
-  const totalCachedKb = Object.values(cachedMeta).reduce((sum, item) => sum + item.sizeKb, 0);
-  const totalCachedMb = (totalCachedKb / 1024).toFixed(1);
+  const { cachedCount, totalCachedKb, totalCachedMb, enrolledCount } = useMemo(() => {
+    const cached = textbooks.filter((book) => Boolean(cachedMeta[book.id])).length;
+    const kb = Object.values(cachedMeta).reduce((sum, item) => sum + item.sizeKb, 0);
+    const mb = (kb / 1024).toFixed(1);
+    const enrolled = textbooks.filter((b: any) => Boolean(b.isEnrolled)).length;
+    return { cachedCount: cached, totalCachedKb: kb, totalCachedMb: mb, enrolledCount: enrolled };
+  }, [textbooks, cachedMeta]);
 
-  const enrolledCount = textbooks.filter((b: any) => b.isEnrolled).length;
-
-  const filteredBooks = textbooks
-    .filter((b: any) => {
-      const isCached = Boolean(cachedMeta[b.id]);
-      if (activeFilter === 'enrolled') return Boolean(b.isEnrolled);
-      if (activeFilter === 'cached') return isCached;
-      if (activeFilter === 'available') return !isCached;
-      return true;
-    })
-    .filter((b) => {
-      if (!searchQuery.trim()) return true;
-      const q = searchQuery.toLowerCase();
-      return (
-        b.title.toLowerCase().includes(q) ||
-        b.code.toLowerCase().includes(q) ||
-        b.author.toLowerCase().includes(q) ||
-        b.subjectName.toLowerCase().includes(q)
+  const handleDownloadSubjectAll = async (books: Textbook[]) => {
+    if (isOfflineMode) {
+      Alert.alert(
+        'Offline režim je zapnutý',
+        'Pro stažení materiálů předmětu nejdříve nahoře vypni offline režim.'
       );
+      return;
+    }
+    const unCached = books.filter((b) => !cachedMeta[b.id]);
+    if (unCached.length === 0) {
+      Alert.alert('Vše staženo', 'Všechny materiály tohoto předmětu už máš v offline paměti.');
+      return;
+    }
+    for (const b of unCached) {
+      setDownloadingId(b.id);
+      await textbookService.downloadForOffline(b.id, studentIdentity, studentSubjects);
+    }
+    setDownloadingId(null);
+    await refreshData();
+  };
+
+  const filteredBooks = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return textbooks
+      .filter((b: any) => {
+        const isCached = Boolean(cachedMeta[b.id]);
+        if (activeFilter === 'enrolled') return Boolean(b.isEnrolled);
+        if (activeFilter === 'cached') return isCached;
+        if (activeFilter === 'available') return !isCached;
+        return true;
+      })
+      .filter((b) => {
+        if (!q) return true;
+        return (
+          b.title.toLowerCase().includes(q) ||
+          b.code.toLowerCase().includes(q) ||
+          b.author.toLowerCase().includes(q) ||
+          b.subjectName.toLowerCase().includes(q)
+        );
+      });
+  }, [textbooks, cachedMeta, activeFilter, searchQuery]);
+
+  // Unique list of subjects for top filter pill tabs
+  const subjectList = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; code: string; isEnrolled: boolean; count: number }>();
+    textbooks.forEach((book) => {
+      const sId = book.subjectId || 'other';
+      const existing = map.get(sId);
+      if (existing) {
+        existing.count += 1;
+        if (book.isEnrolled) existing.isEnrolled = true;
+      } else {
+        const parsedCode = book.code ? book.code.split(/[\s-]+/)[0] : '';
+        map.set(sId, {
+          id: sId,
+          name: book.subjectName || (sId === 'other' ? 'Knihovna & doplňková literatura' : sId),
+          code: parsedCode || 'KNIHOVNA',
+          isEnrolled: Boolean(book.isEnrolled),
+          count: 1,
+        });
+      }
     });
+
+    const list = Array.from(map.values());
+    return list.sort((a, b) => {
+      if (a.isEnrolled !== b.isEnrolled) return a.isEnrolled ? -1 : 1;
+      return a.name.localeCompare(b.name, 'cs');
+    });
+  }, [textbooks]);
+
+  // Grouped sections of filtered books
+  const groupedSections = useMemo(() => {
+    const targetBooks =
+      selectedSubjectId === 'all'
+        ? filteredBooks
+        : filteredBooks.filter((b) => (b.subjectId || 'other') === selectedSubjectId);
+
+    type SectionEntry = {
+      subjectId: string;
+      subjectName: string;
+      subjectCode: string;
+      isEnrolled: boolean;
+      books: Textbook[];
+      cachedCount: number;
+    };
+
+    const map = new Map<string, SectionEntry>();
+
+    targetBooks.forEach((book) => {
+      const sId = book.subjectId || 'other';
+      let entry = map.get(sId);
+      if (!entry) {
+        const parsedCode = book.code ? book.code.split(/[\s-]+/)[0] : '';
+        const newEntry: SectionEntry = {
+          subjectId: sId,
+          subjectName: book.subjectName || (sId === 'other' ? 'Knihovna & doplňková literatura' : sId),
+          subjectCode: parsedCode || 'KNIHOVNA',
+          isEnrolled: Boolean(book.isEnrolled),
+          books: [],
+          cachedCount: 0,
+        };
+        map.set(sId, newEntry);
+        entry = newEntry;
+      }
+      entry.books.push(book);
+      if (cachedMeta[book.id]) {
+        entry.cachedCount += 1;
+      }
+      if (book.isEnrolled) {
+        entry.isEnrolled = true;
+      }
+    });
+
+    const sections = Array.from(map.values());
+    return sections.sort((a, b) => {
+      if (a.isEnrolled !== b.isEnrolled) return a.isEnrolled ? -1 : 1;
+      return a.subjectName.localeCompare(b.subjectName, 'cs');
+    });
+  }, [filteredBooks, selectedSubjectId, cachedMeta]);
 
   if (!textbooks.length) {
     return (
@@ -362,7 +471,7 @@ export function TextbooksScreen({ studentSubjects = [], studentIdentity = 'defau
           </Text>
         </View>
 
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
           <Pressable
             onPress={() => {
               setImportModalVisible(true);
@@ -589,235 +698,467 @@ export function TextbooksScreen({ studentSubjects = [], studentIdentity = 'defau
         </Pressable>
       </View>
 
-      {/* Books List */}
-      <View style={styles.booksList}>
-        {filteredBooks.length === 0 ? (
-          <View
+      {/* Books List (Responzivní mřížka na desktopu) */}
+      {/* Subject Filter Chips Bar */}
+      <View style={{ marginBottom: 14 }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.subjectFilterScroll}
+        >
+          <Pressable
+            onPress={() => setSelectedSubjectId('all')}
             style={[
-              styles.emptyStateCard,
-              { backgroundColor: theme.surface, borderColor: theme.border },
+              styles.subjectFilterChip,
+              selectedSubjectId === 'all' && styles.subjectFilterChipActive,
+              {
+                backgroundColor:
+                  selectedSubjectId === 'all'
+                    ? isDark
+                      ? '#2563EB'
+                      : '#0F172A'
+                    : isDark
+                    ? 'rgba(255,255,255,0.06)'
+                    : '#F1F5F9',
+                borderColor: theme.border,
+              },
             ]}
           >
-            <Ionicons name="book-outline" size={32} color={theme.muted} />
-            <Text style={[styles.emptyTitle, { color: theme.text }]}>
-              {searchQuery ? 'Žádná kniha neodpovídá hledání' : 'Žádné učebnice ve filtru'}
+            <Text
+              style={[
+                styles.subjectFilterText,
+                { color: selectedSubjectId === 'all' ? '#FFFFFF' : theme.secondary },
+              ]}
+            >
+              Všechny předměty ({textbooks.length})
             </Text>
-            <Text style={[styles.emptySub, { color: theme.secondary }]}>
-              Zkus změnit filtr nebo vyhledávací dotaz.
-            </Text>
-          </View>
-        ) : (
-          filteredBooks.map((book) => {
-            const isCached = Boolean(cachedMeta[book.id]);
-            const isDownloading = downloadingId === book.id;
-            const totalReadTime = book.chapters.reduce(
-              (acc, c) => acc + c.readTimeMinutes,
-              0
-            );
+          </Pressable>
+
+          {subjectList.map((s) => {
+            const isSelected = selectedSubjectId === s.id;
+            const sTheme = dynamicThemes[s.id];
+            const accentColor = sTheme?.primary || (isDark ? '#38BDF8' : '#2563EB');
+            const cleanName = cleanSubjectName(s.name);
 
             return (
-              <View
-                key={book.id}
+              <Pressable
+                key={s.id}
+                onPress={() => setSelectedSubjectId(s.id)}
                 style={[
-                  styles.bookCard,
+                  styles.subjectFilterChip,
+                  isSelected && styles.subjectFilterChipActive,
                   {
-                    backgroundColor: theme.surface,
-                    borderColor: theme.border,
-                    shadowColor: theme.cardShadow,
-                    shadowOpacity: theme.cardShadowOpacity,
+                    backgroundColor: isSelected
+                      ? isDark
+                        ? '#2563EB'
+                        : '#0F172A'
+                      : isDark
+                      ? 'rgba(255,255,255,0.06)'
+                      : '#F1F5F9',
+                    borderColor: isSelected ? accentColor : theme.border,
                   },
                 ]}
               >
-                <View style={styles.cardTop}>
+                {s.isEnrolled && (
                   <View
                     style={[
-                      styles.codeBadge,
-                      {
-                        backgroundColor: isDark
-                          ? 'rgba(255,255,255,0.06)'
-                          : '#F1F5F9',
-                        borderColor: theme.border,
-                      },
+                      styles.subjectPillDot,
+                      { backgroundColor: isSelected ? '#34D399' : accentColor },
                     ]}
-                  >
-                    <Text
-                      style={[
-                        styles.codeText,
-                        { color: isDark ? '#38BDF8' : '#2563EB' },
-                      ]}
-                    >
-                      {book.code}
-                    </Text>
-                  </View>
-
-                  {book.id.startsWith('uubook_') && (
-                    <View
-                      style={[
-                        styles.unicornPill,
-                        {
-                          backgroundColor: isDark
-                            ? 'rgba(56,189,248,0.14)'
-                            : '#EFF6FF',
-                          borderColor: isDark
-                            ? 'rgba(56,189,248,0.3)'
-                            : '#BFDBFE',
-                        },
-                      ]}
-                    >
-                      <Ionicons
-                        name="sparkles"
-                        size={11}
-                        color={isDark ? '#38BDF8' : '#2563EB'}
-                      />
-                      <Text
-                        style={[
-                          styles.unicornPillText,
-                          { color: isDark ? '#38BDF8' : '#2563EB' },
-                        ]}
-                      >
-                        Unicorn uuBookKit
-                      </Text>
-                    </View>
-                  )}
-
-                  {isCached ? (
-                    <View
-                      style={[
-                        styles.cachedPill,
-                        {
-                          backgroundColor: isDark
-                            ? 'rgba(16,185,129,0.14)'
-                            : '#ECFDF5',
-                          borderColor: isDark
-                            ? 'rgba(16,185,129,0.3)'
-                            : '#A7F3D0',
-                        },
-                      ]}
-                    >
-                      <View style={styles.greenDot} />
-                      <Text
-                        style={[
-                          styles.cachedPillText,
-                          { color: isDark ? '#34D399' : '#059669' },
-                        ]}
-                      >
-                        Offline v paměti
-                      </Text>
-                    </View>
-                  ) : (
-                    <Text style={[styles.notCachedText, { color: theme.muted }]}>
-                      {(book.sizeKb / 1024).toFixed(1)} MB
-                    </Text>
-                  )}
-                </View>
-
-                <Text style={[styles.bookTitle, { color: theme.text }]}>
-                  {book.title}
-                </Text>
-                <Text style={[styles.bookAuthor, { color: theme.secondary }]}>
-                  {book.author}
-                </Text>
-
-                {/* Chapters & Read Time Tag */}
-                <View style={styles.statsRow}>
-                  <View style={styles.statItem}>
-                    <Ionicons name="document-text-outline" size={12} color={theme.secondary} />
-                    <Text style={[styles.statText, { color: theme.secondary }]}>
-                      {book.chapters.length} {book.chapters.length === 1 ? 'kapitola' : book.chapters.length < 5 ? 'kapitoly' : 'kapitol'}
-                    </Text>
-                  </View>
-                  <View style={styles.statItem}>
-                    <Ionicons name="time-outline" size={12} color={theme.secondary} />
-                    <Text style={[styles.statText, { color: theme.secondary }]}>
-                      ~{totalReadTime} min čtení
-                    </Text>
-                  </View>
-                </View>
-
-                <View
+                  />
+                )}
+                <Text
                   style={[
-                    styles.cardActions,
-                    { borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9' },
+                    styles.subjectFilterText,
+                    {
+                      color: isSelected ? '#FFFFFF' : theme.text,
+                      fontWeight: isSelected ? '700' : '500',
+                    },
                   ]}
                 >
+                  {cleanName} ({s.count})
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* Grouped Subjects & Textbooks List */}
+      {groupedSections.length === 0 ? (
+        <View
+          style={[
+            styles.emptyStateCard,
+            { backgroundColor: theme.surface, borderColor: theme.border },
+          ]}
+        >
+          <Ionicons name="book-outline" size={32} color={theme.muted} />
+          <Text style={[styles.emptyTitle, { color: theme.text }]}>
+            {searchQuery ? 'Žádná kniha neodpovídá hledání' : 'Žádné učebnice ve vybraném filtru'}
+          </Text>
+          <Text style={[styles.emptySub, { color: theme.secondary }]}>
+            Zkus změnit filtr předmětů nebo vyhledávací dotaz.
+          </Text>
+        </View>
+      ) : (
+        groupedSections.map((section) => {
+          const sTheme = dynamicThemes[section.subjectId] || {
+            primary: isDark ? '#38BDF8' : '#2563EB',
+            light: isDark ? 'rgba(56,189,248,0.12)' : '#EFF6FF',
+            border: isDark ? 'rgba(56,189,248,0.3)' : '#BFDBFE',
+            code: 'KNIHOVNA',
+          };
+          const cleanName = cleanSubjectName(section.subjectName);
+          const allCached = section.cachedCount === section.books.length;
+
+          return (
+            <View key={section.subjectId} style={styles.subjectSectionWrap}>
+              {/* Subject Section Header */}
+              <View
+                style={[
+                  styles.subjectSectionHeader,
+                  {
+                    backgroundColor: theme.surface,
+                    borderColor: sTheme.border || theme.border,
+                    borderLeftColor: sTheme.primary,
+                    borderLeftWidth: 4,
+                  },
+                ]}
+              >
+                <View style={styles.subjectHeaderLeft}>
+                  <View style={styles.subjectTitleBadgeRow}>
+                    <View
+                      style={[
+                        styles.subjectCodeBadge,
+                        { backgroundColor: sTheme.light, borderColor: sTheme.border },
+                      ]}
+                    >
+                      <Text style={[styles.subjectCodeBadgeText, { color: sTheme.primary }]}>
+                        {section.subjectCode}
+                      </Text>
+                    </View>
+
+                    {section.isEnrolled ? (
+                      <View
+                        style={[
+                          styles.enrolledBadge,
+                          {
+                            backgroundColor: isDark
+                              ? 'rgba(16,185,129,0.16)'
+                              : '#ECFDF5',
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          name="school"
+                          size={11}
+                          color={isDark ? '#34D399' : '#059669'}
+                        />
+                        <Text
+                          style={[
+                            styles.enrolledBadgeText,
+                            { color: isDark ? '#34D399' : '#059669' },
+                          ]}
+                        >
+                          Zapsaný předmět
+                        </Text>
+                      </View>
+                    ) : (
+                      <View
+                        style={[
+                          styles.enrolledBadge,
+                          {
+                            backgroundColor: isDark
+                              ? 'rgba(255,255,255,0.06)'
+                              : '#F1F5F9',
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          name="library-outline"
+                          size={11}
+                          color={theme.secondary}
+                        />
+                        <Text
+                          style={[
+                            styles.enrolledBadgeText,
+                            { color: theme.secondary },
+                          ]}
+                        >
+                          Knihovna
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <Text style={[styles.subjectSectionTitle, { color: theme.text }]}>
+                    {cleanName}
+                  </Text>
+
+                  <Text style={[styles.subjectSectionMeta, { color: theme.secondary }]}>
+                    {section.books.length}{' '}
+                    {section.books.length === 1
+                      ? 'učebnice'
+                      : section.books.length < 5
+                      ? 'učebnice'
+                      : 'učebnic'}
+                    {' • '}
+                    {allCached ? (
+                      <Text style={{ color: isDark ? '#34D399' : '#059669', fontWeight: '600' }}>
+                        vše offline v paměti
+                      </Text>
+                    ) : (
+                      <Text>
+                        {section.cachedCount} z {section.books.length} v offline paměti
+                      </Text>
+                    )}
+                  </Text>
+                </View>
+
+                {/* Quick Subject Download Action */}
+                {!allCached && (
                   <Pressable
-                    onPress={() => handleOpenReader(book)}
+                    onPress={() => handleDownloadSubjectAll(section.books)}
+                    hitSlop={8}
                     style={({ pressed }) => [
-                      styles.readBtn,
-                      { backgroundColor: isDark ? '#2563EB' : '#0F172A' },
-                      pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+                      styles.subjectQuickDownloadBtn,
+                      {
+                        backgroundColor: sTheme.light,
+                        borderColor: sTheme.border,
+                      },
+                      pressed && { opacity: 0.7 },
                     ]}
                   >
-                    <Ionicons name="book-outline" size={15} color="#FFFFFF" />
-                    <Text style={styles.readBtnText}>Číst učebnici</Text>
+                    <Ionicons name="cloud-download-outline" size={14} color={sTheme.primary} />
+                    <Text style={[styles.subjectQuickDownloadText, { color: sTheme.primary }]}>
+                      Stáhnout předmět
+                    </Text>
                   </Pressable>
+                )}
+              </View>
 
-                  {isCached ? (
-                    <Pressable
-                      onPress={() => handleRemove(book)}
-                      hitSlop={8}
-                      style={({ pressed }) => [
-                        styles.removeBtn,
+              {/* Grid of Books for this Subject */}
+              <View style={[styles.booksList, isDesktop && styles.desktopBooksGrid]}>
+                {section.books.map((book) => {
+                  const isCached = Boolean(cachedMeta[book.id]);
+                  const isDownloading = downloadingId === book.id;
+                  const totalReadTime = book.chapters.reduce(
+                    (acc, c) => acc + c.readTimeMinutes,
+                    0
+                  );
+
+                  return (
+                    <View
+                      key={book.id}
+                      style={[
+                        styles.bookCard,
+                        isDesktop && styles.desktopBookCard,
                         {
-                          backgroundColor: isDark
-                            ? 'rgba(255,255,255,0.04)'
-                            : '#F1F5F9',
-                        },
-                        pressed && { opacity: 0.6 },
-                      ]}
-                    >
-                      <Ionicons
-                        name="trash-outline"
-                        size={16}
-                        color={isDark ? '#FB7185' : '#EF4444'}
-                      />
-                    </Pressable>
-                  ) : (
-                    <Pressable
-                      disabled={isDownloading || isOfflineMode}
-                      onPress={() => handleDownload(book)}
-                      style={({ pressed }) => [
-                        styles.downloadBtn,
-                        {
-                          backgroundColor: isDark
-                            ? 'rgba(255,255,255,0.08)'
-                            : '#F1F5F9',
+                          backgroundColor: theme.surface,
                           borderColor: theme.border,
+                          shadowColor: theme.cardShadow,
+                          shadowOpacity: theme.cardShadowOpacity,
                         },
-                        isOfflineMode && { opacity: 0.4 },
-                        pressed && { opacity: 0.7 },
                       ]}
                     >
-                      {isDownloading ? (
-                        <ActivityIndicator
-                          size="small"
-                          color={isDark ? '#38BDF8' : '#2563EB'}
-                        />
-                      ) : (
-                        <>
-                          <Ionicons
-                            name="cloud-download-outline"
-                            size={15}
-                            color={theme.text}
-                          />
+                      <View style={styles.cardTop}>
+                        <View
+                          style={[
+                            styles.codeBadge,
+                            {
+                              backgroundColor: isDark
+                                ? 'rgba(255,255,255,0.06)'
+                                : '#F1F5F9',
+                              borderColor: theme.border,
+                            },
+                          ]}
+                        >
                           <Text
                             style={[
-                              styles.downloadBtnText,
-                              { color: theme.text },
+                              styles.codeText,
+                              { color: isDark ? '#38BDF8' : '#2563EB' },
                             ]}
                           >
-                            Stáhnout offline
+                            {book.code}
                           </Text>
-                        </>
-                      )}
-                    </Pressable>
-                  )}
-                </View>
+                        </View>
+
+                        {book.id.startsWith('uubook_') && (
+                          <View
+                            style={[
+                              styles.unicornPill,
+                              {
+                                backgroundColor: isDark
+                                  ? 'rgba(56,189,248,0.14)'
+                                  : '#EFF6FF',
+                                borderColor: isDark
+                                  ? 'rgba(56,189,248,0.3)'
+                                  : '#BFDBFE',
+                              },
+                            ]}
+                          >
+                            <Ionicons
+                              name="sparkles"
+                              size={11}
+                              color={isDark ? '#38BDF8' : '#2563EB'}
+                            />
+                            <Text
+                              style={[
+                                styles.unicornPillText,
+                                { color: isDark ? '#38BDF8' : '#2563EB' },
+                              ]}
+                            >
+                              Unicorn uuBookKit
+                            </Text>
+                          </View>
+                        )}
+
+                        {isCached ? (
+                          <View
+                            style={[
+                              styles.cachedPill,
+                              {
+                                backgroundColor: isDark
+                                  ? 'rgba(16,185,129,0.14)'
+                                  : '#ECFDF5',
+                                borderColor: isDark
+                                  ? 'rgba(16,185,129,0.3)'
+                                  : '#A7F3D0',
+                              },
+                            ]}
+                          >
+                            <View style={styles.greenDot} />
+                            <Text
+                              style={[
+                                styles.cachedPillText,
+                                { color: isDark ? '#34D399' : '#059669' },
+                              ]}
+                            >
+                              Offline v paměti
+                            </Text>
+                          </View>
+                        ) : (
+                          <Text style={[styles.notCachedText, { color: theme.muted }]}>
+                            {(book.sizeKb / 1024).toFixed(1)} MB
+                          </Text>
+                        )}
+                      </View>
+
+                      <Text style={[styles.bookTitle, { color: theme.text }]}>
+                        {book.title}
+                      </Text>
+                      <Text style={[styles.bookAuthor, { color: theme.secondary }]}>
+                        {book.author}
+                      </Text>
+
+                      {/* Chapters & Read Time Tag */}
+                      <View style={styles.statsRow}>
+                        <View style={styles.statItem}>
+                          <Ionicons name="document-text-outline" size={12} color={theme.secondary} />
+                          <Text style={[styles.statText, { color: theme.secondary }]}>
+                            {book.chapters.length}{' '}
+                            {book.chapters.length === 1
+                              ? 'kapitola'
+                              : book.chapters.length < 5
+                              ? 'kapitoly'
+                              : 'kapitol'}
+                          </Text>
+                        </View>
+                        <View style={styles.statItem}>
+                          <Ionicons name="time-outline" size={12} color={theme.secondary} />
+                          <Text style={[styles.statText, { color: theme.secondary }]}>
+                            ~{totalReadTime} min čtení
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View
+                        style={[
+                          styles.cardActions,
+                          { borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9' },
+                        ]}
+                      >
+                        <Pressable
+                          onPress={() => handleOpenReader(book)}
+                          style={({ pressed }) => [
+                            styles.readBtn,
+                            { backgroundColor: isDark ? '#2563EB' : '#0F172A' },
+                            pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+                          ]}
+                        >
+                          <Ionicons name="book-outline" size={15} color="#FFFFFF" />
+                          <Text style={styles.readBtnText}>Číst učebnici</Text>
+                        </Pressable>
+
+                        {isCached ? (
+                          <Pressable
+                            onPress={() => handleRemove(book)}
+                            hitSlop={8}
+                            style={({ pressed }) => [
+                              styles.removeBtn,
+                              {
+                                backgroundColor: isDark
+                                  ? 'rgba(255,255,255,0.04)'
+                                  : '#F1F5F9',
+                              },
+                              pressed && { opacity: 0.6 },
+                            ]}
+                          >
+                            <Ionicons
+                              name="trash-outline"
+                              size={16}
+                              color={isDark ? '#FB7185' : '#EF4444'}
+                            />
+                          </Pressable>
+                        ) : (
+                          <Pressable
+                            disabled={isDownloading || isOfflineMode}
+                            onPress={() => handleDownload(book)}
+                            style={({ pressed }) => [
+                              styles.downloadBtn,
+                              {
+                                backgroundColor: isDark
+                                  ? 'rgba(255,255,255,0.08)'
+                                  : '#F1F5F9',
+                                borderColor: theme.border,
+                              },
+                              isOfflineMode && { opacity: 0.4 },
+                              pressed && { opacity: 0.7 },
+                            ]}
+                          >
+                            {isDownloading ? (
+                              <ActivityIndicator
+                                size="small"
+                                color={isDark ? '#38BDF8' : '#2563EB'}
+                              />
+                            ) : (
+                              <>
+                                <Ionicons
+                                  name="cloud-download-outline"
+                                  size={15}
+                                  color={theme.text}
+                                />
+                                <Text
+                                  style={[
+                                    styles.downloadBtnText,
+                                    { color: theme.text },
+                                  ]}
+                                >
+                                  Stáhnout offline
+                                </Text>
+                              </>
+                            )}
+                          </Pressable>
+                        )}
+                      </View>
+                    </View>
+                  );
+                })}
               </View>
-            );
-          })
-        )}
-      </View>
+            </View>
+          );
+        })
+      )}
 
       {/* Reader Modal Component */}
       <TextbookReaderModal
@@ -1242,10 +1583,109 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  subjectFilterScroll: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingVertical: 2,
+  },
+  subjectFilterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 13,
+    paddingVertical: 7,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+  },
+  subjectFilterChipActive: {
+    borderColor: 'transparent',
+  },
+  subjectPillDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  subjectFilterText: {
+    fontSize: 12.5,
+  },
+  subjectSectionWrap: {
+    marginBottom: 26,
+  },
+  subjectSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+    borderRadius: radius.medium,
+    borderWidth: 1,
+    marginBottom: 12,
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  subjectHeaderLeft: {
+    flex: 1,
+    minWidth: 200,
+    gap: 4,
+  },
+  subjectTitleBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  subjectCodeBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+  },
+  subjectCodeBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  enrolledBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+  },
+  enrolledBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  subjectSectionTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+  subjectSectionMeta: {
+    fontSize: 12,
+  },
+  subjectQuickDownloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+  },
+  subjectQuickDownloadText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
   booksList: {
     gap: 12,
     marginTop: 4,
     marginBottom: 20,
+  },
+  desktopBooksGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
   },
   bookCard: {
     borderRadius: radius.medium,
@@ -1255,6 +1695,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 3,
     gap: 8,
+  },
+  desktopBookCard: {
+    width: '48.8%',
+    flexGrow: 1,
+    minWidth: 320,
   },
   cardTop: {
     flexDirection: 'row',

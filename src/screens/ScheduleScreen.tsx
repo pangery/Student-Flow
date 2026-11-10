@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { BottomSheet } from '../components/BottomSheet';
@@ -35,39 +36,340 @@ export function ScheduleScreen({
 }: Props) {
   const theme = useAppTheme();
   const isDark = theme.isDark;
-  const dynamicThemes = getSubjectThemes(isDark);
+  const dynamicThemes = useMemo(() => getSubjectThemes(isDark), [isDark]);
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 860;
 
-  const now = new Date();
-  const currentDayIndex = now.getDay() + 1; // 2 = Monday, ..., 6 = Friday
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const currentDayIndex = useMemo(() => {
+    const d = new Date();
+    return d.getDay() + 1; // 2 = Monday, ..., 6 = Friday
+  }, []);
+  const currentMinutes = useMemo(() => {
+    const d = new Date();
+    return d.getHours() * 60 + d.getMinutes();
+  }, []);
 
-  const initialDay = weekdays.some((w) => w.dayIndex === currentDayIndex)
-    ? currentDayIndex
-    : 2;
+  const [viewMode, setViewMode] = useState<'week' | 'day'>(width >= 860 ? 'week' : 'day');
+
+  const initialDay = useMemo(() => {
+    return weekdays.some((w) => w.dayIndex === currentDayIndex)
+      ? currentDayIndex
+      : 2;
+  }, [currentDayIndex]);
 
   const [selectedDay, setSelectedDay] = useState<number>(initialDay);
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
 
-  const selectedDate = new Date(now);
-  const mondayOffset = (now.getDay() + 6) % 7;
-  selectedDate.setDate(now.getDate() - mondayOffset + selectedDay - 2);
-  const isSelectedDate = (s: Subject) => s.weekday === selectedDay &&
-    (!s.date || new Date(s.date).toDateString() === selectedDate.toDateString());
-  const activeSubjects = subjects
-    .filter(isSelectedDate)
-    .sort((a, b) => a.startMinutes - b.startMinutes);
+  // Precompute subjects and dates for all days in a single pass
+  const subjectsByDay = useMemo(() => {
+    const now = new Date();
+    const mondayOffset = (now.getDay() + 6) % 7;
+    const map = new Map<number, { date: Date; formattedDate: string; subjects: Subject[] }>();
+
+    for (const w of weekdays) {
+      const d = new Date(now);
+      d.setDate(now.getDate() - mondayOffset + w.dayIndex - 2);
+      const targetDateStr = d.toDateString();
+      const filtered = subjects
+        .filter(
+          (s) =>
+            s.weekday === w.dayIndex &&
+            (!s.date || new Date(s.date).toDateString() === targetDateStr)
+        )
+        .sort((a, b) => a.startMinutes - b.startMinutes);
+
+      map.set(w.dayIndex, {
+        date: d,
+        formattedDate: d.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric' }),
+        subjects: filtered,
+      });
+    }
+    return map;
+  }, [subjects]);
+
+  const activeSubjects = useMemo(() => {
+    return subjectsByDay.get(selectedDay)?.subjects ?? [];
+  }, [subjectsByDay, selectedDay]);
+
+  const getSubjectsForDay = useCallback((dayIndex: number) => {
+    return subjectsByDay.get(dayIndex)?.subjects ?? [];
+  }, [subjectsByDay]);
+
+  const getDayDate = useCallback((dayIndex: number) => {
+    return subjectsByDay.get(dayIndex)?.date ?? new Date();
+  }, [subjectsByDay]);
 
   return (
     <Screen>
-      {/* Everyday Header */}
+      {/* Everyday Header with View Switcher */}
       <View style={styles.headerGroup}>
-        <Text style={[styles.headerEyebrow, { color: isDark ? '#38BDF8' : '#2563EB' }]}>
-          HARMONOGRAM VÝUKY
-        </Text>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>Rozvrh</Text>
+        <View style={styles.headerTopRow}>
+          <View>
+            <Text style={[styles.headerEyebrow, { color: isDark ? '#38BDF8' : '#2563EB' }]}>
+              HARMONOGRAM VÝUKY
+            </Text>
+            <Text style={[styles.headerTitle, { color: theme.text }]}>Rozvrh</Text>
+          </View>
+
+          {/* Přepínač Týden / Den pro tablety a desktopy */}
+          <View
+            style={[
+              styles.viewModeSwitcher,
+              {
+                backgroundColor: theme.surface,
+                borderColor: theme.border,
+              },
+            ]}
+          >
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Týdenní přehled rozvrhu"
+              onPress={() => setViewMode('week')}
+              style={[
+                styles.viewModeBtn,
+                viewMode === 'week' && [
+                  styles.viewModeBtnActive,
+                  { backgroundColor: isDark ? '#2563EB' : '#0F172A' },
+                ],
+              ]}
+            >
+              <Ionicons
+                name="grid-outline"
+                size={14}
+                color={viewMode === 'week' ? '#FFFFFF' : theme.secondary}
+              />
+              <Text
+                style={[
+                  styles.viewModeBtnText,
+                  { color: viewMode === 'week' ? '#FFFFFF' : theme.secondary },
+                ]}
+              >
+                Týden
+              </Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Denní detail rozvrhu"
+              onPress={() => setViewMode('day')}
+              style={[
+                styles.viewModeBtn,
+                viewMode === 'day' && [
+                  styles.viewModeBtnActive,
+                  { backgroundColor: isDark ? '#2563EB' : '#0F172A' },
+                ],
+              ]}
+            >
+              <Ionicons
+                name="calendar-outline"
+                size={14}
+                color={viewMode === 'day' ? '#FFFFFF' : theme.secondary}
+              />
+              <Text
+                style={[
+                  styles.viewModeBtnText,
+                  { color: viewMode === 'day' ? '#FFFFFF' : theme.secondary },
+                ]}
+              >
+                Den
+              </Text>
+            </Pressable>
+          </View>
+        </View>
       </View>
 
-      {/* Weekday Selector Pills */}
+      {/* TÝDENNÍ KALENDÁŘNÍ POHLED (5 SLOUPCŮ PONDĚLÍ - PÁTEK) */}
+      {viewMode === 'week' ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={true}
+          contentContainerStyle={styles.weeklyGridScroll}
+        >
+          <View style={styles.weeklyGridContainer}>
+            {weekdays.map((w) => {
+              const daySubjects = getSubjectsForDay(w.dayIndex);
+              const isToday = currentDayIndex === w.dayIndex;
+              const dateObj = getDayDate(w.dayIndex);
+              const formattedDate = dateObj.toLocaleDateString('cs-CZ', {
+                day: 'numeric',
+                month: 'numeric',
+              });
+
+              return (
+                <View
+                  key={w.dayIndex}
+                  style={[
+                    styles.weeklyColumn,
+                    {
+                      backgroundColor: isToday
+                        ? isDark
+                          ? 'rgba(56, 189, 248, 0.05)'
+                          : 'rgba(37, 99, 235, 0.03)'
+                        : theme.surface,
+                      borderColor: isToday
+                        ? isDark
+                          ? 'rgba(56, 189, 248, 0.4)'
+                          : '#BFDBFE'
+                        : theme.border,
+                    },
+                  ]}
+                >
+                  {/* Hlavička dne */}
+                  <View
+                    style={[
+                      styles.weeklyColumnHeader,
+                      {
+                        borderBottomColor: theme.border,
+                        backgroundColor: isToday
+                          ? isDark
+                            ? 'rgba(56, 189, 248, 0.12)'
+                            : '#EFF6FF'
+                          : 'transparent',
+                      },
+                    ]}
+                  >
+                    <View style={styles.weeklyHeaderTitleRow}>
+                      <Text
+                        style={[
+                          styles.weeklyDayLabel,
+                          { color: isToday ? (isDark ? '#38BDF8' : '#2563EB') : theme.text },
+                        ]}
+                      >
+                        {w.label}
+                      </Text>
+                      {isToday && (
+                        <View style={styles.weeklyTodayPill}>
+                          <Text style={styles.weeklyTodayPillText}>DNES</Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.weeklyHeaderSubRow}>
+                      <Text style={[styles.weeklyDateText, { color: theme.secondary }]}>
+                        {formattedDate}
+                      </Text>
+                      <Text style={[styles.weeklyCountText, { color: theme.secondary }]}>
+                        {daySubjects.length ? `${daySubjects.length} h` : 'Volno'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Karty předmětů v daný den */}
+                  <View style={styles.weeklyLessonsList}>
+                    {daySubjects.length === 0 ? (
+                      <View style={styles.weeklyEmptyDay}>
+                        <Ionicons name="cafe-outline" size={20} color={theme.muted} />
+                        <Text style={[styles.weeklyEmptyText, { color: theme.secondary }]}>
+                          Žádná výuka
+                        </Text>
+                      </View>
+                    ) : (
+                      daySubjects.map((s) => {
+                        const sTheme = dynamicThemes[s.id] ?? {
+                          primary: theme.blue,
+                          light: isDark ? 'rgba(56,189,248,0.15)' : '#EFF6FF',
+                          border: isDark ? 'rgba(56,189,248,0.35)' : '#BFDBFE',
+                          code: s.code || 'UU.PREDMET',
+                        };
+
+                        const isOngoing =
+                          isToday &&
+                          currentMinutes >= s.startMinutes &&
+                          currentMinutes <= s.endMinutes;
+
+                        return (
+                          <Pressable
+                            key={s.id}
+                            onPress={() => setSelectedSubject(s)}
+                            style={({ pressed }) => [
+                              styles.weeklyLessonCard,
+                              {
+                                backgroundColor: isDark ? '#111827' : '#FFFFFF',
+                                borderColor: isOngoing
+                                  ? isDark
+                                    ? '#38BDF8'
+                                    : '#2563EB'
+                                  : theme.border,
+                                borderWidth: isOngoing ? 1.5 : 1,
+                              },
+                              pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+                            ]}
+                          >
+                            <View
+                              style={[
+                                styles.weeklyCardStripe,
+                                { backgroundColor: sTheme.primary },
+                              ]}
+                            />
+                            <View style={styles.weeklyCardContent}>
+                              {/* Čas a kód */}
+                              <View style={styles.weeklyCardTimeRow}>
+                                <Text
+                                  style={[
+                                    styles.weeklyCardTime,
+                                    { color: isDark ? '#38BDF8' : '#2563EB' },
+                                  ]}
+                                >
+                                  {formatTime(s.startMinutes)} – {formatTime(s.endMinutes)}
+                                </Text>
+                                <View
+                                  style={[
+                                    styles.weeklyCodeBadge,
+                                    {
+                                      backgroundColor: sTheme.light,
+                                      borderColor: sTheme.border,
+                                    },
+                                  ]}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.weeklyCodeText,
+                                      { color: sTheme.primary },
+                                    ]}
+                                  >
+                                    {s.code || sTheme.code}
+                                  </Text>
+                                </View>
+                              </View>
+
+                              {isOngoing && (
+                                <View style={styles.weeklyOngoingRow}>
+                                  <View style={[styles.pulseDot, { backgroundColor: '#10B981' }]} />
+                                  <Text style={styles.weeklyOngoingText}>Právě probíhá</Text>
+                                </View>
+                              )}
+
+                              {/* Název předmětu */}
+                              <Text
+                                numberOfLines={2}
+                                style={[styles.weeklySubjectName, { color: theme.text }]}
+                              >
+                                {cleanSubjectName(s.name)}
+                              </Text>
+
+                              {/* Místnost a vyučující */}
+                              <View style={styles.weeklyMetaRow}>
+                                <Ionicons name="location-outline" size={11} color={theme.secondary} />
+                                <Text
+                                  numberOfLines={1}
+                                  style={[styles.weeklyMetaText, { color: theme.secondary }]}
+                                >
+                                  {s.location || 'Místnost neuvedena'}
+                                </Text>
+                              </View>
+                            </View>
+                          </Pressable>
+                        );
+                      })
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </ScrollView>
+      ) : (
+        <>
+          {/* Weekday Selector Pills */}
       <View
         style={[
           styles.weekSelector,
@@ -155,7 +457,7 @@ export function ScheduleScreen({
           <Text style={[styles.dayTitle, { color: theme.text }]}>
             {weekdays.find((w) => w.dayIndex === selectedDay)?.label}
           </Text>
-          {selectedDay === currentDayIndex && (
+          {selectedDay === currentDayIndex ? (
             <View
               style={[
                 styles.currentDayTag,
@@ -175,6 +477,24 @@ export function ScheduleScreen({
                 Dnešní den
               </Text>
             </View>
+          ) : (
+            <Pressable
+              onPress={() => setSelectedDay(currentDayIndex)}
+              hitSlop={8}
+              style={({ pressed }) => [
+                styles.jumpTodayBtn,
+                {
+                  backgroundColor: isDark ? 'rgba(56,189,248,0.12)' : '#EFF6FF',
+                  borderColor: isDark ? 'rgba(56,189,248,0.3)' : '#BFDBFE',
+                },
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Ionicons name="return-down-back" size={13} color={isDark ? '#38BDF8' : '#2563EB'} />
+              <Text style={[styles.jumpTodayBtnText, { color: isDark ? '#38BDF8' : '#2563EB' }]}>
+                Skočit na dnešek
+              </Text>
+            </Pressable>
           )}
         </View>
 
@@ -234,10 +554,19 @@ export function ScheduleScreen({
             };
 
             const durationMinutes = subject.endMinutes - subject.startMinutes;
+            const isToday = selectedDay === currentDayIndex;
             const isOngoing =
-              selectedDay === currentDayIndex &&
+              isToday &&
               currentMinutes >= subject.startMinutes &&
               currentMinutes <= subject.endMinutes;
+            const isUpcoming =
+              isToday &&
+              currentMinutes < subject.startMinutes &&
+              subject.startMinutes - currentMinutes <= 120;
+            const minutesLeft = subject.endMinutes - currentMinutes;
+            const elapsedPercent = isOngoing
+              ? Math.min(100, Math.max(5, Math.round(((currentMinutes - subject.startMinutes) / durationMinutes) * 100)))
+              : 0;
 
             return (
               <Pressable
@@ -291,11 +620,35 @@ export function ScheduleScreen({
                     </View>
                   </View>
 
-                  {/* Ongoing indicator banner if currently happening */}
+                  {/* Ongoing indicator banner with progress if currently happening */}
                   {isOngoing && (
-                    <View style={styles.ongoingRow}>
-                      <View style={[styles.pulseDot, { backgroundColor: '#10B981' }]} />
-                      <Text style={styles.ongoingText}>Právě probíhá</Text>
+                    <View style={styles.ongoingBlock}>
+                      <View style={styles.ongoingRow}>
+                        <View style={[styles.pulseDot, { backgroundColor: '#10B981' }]} />
+                        <Text style={styles.ongoingText}>
+                          Právě probíhá • zbývá {Math.max(1, minutesLeft)} min
+                        </Text>
+                      </View>
+                      <View style={styles.lessonProgressBarTrack}>
+                        <View
+                          style={[
+                            styles.lessonProgressBarFill,
+                            {
+                              width: `${elapsedPercent}%`,
+                              backgroundColor: isDark ? '#34D399' : '#10B981',
+                            },
+                          ]}
+                        />
+                      </View>
+                    </View>
+                  )}
+
+                  {!isOngoing && isUpcoming && (
+                    <View style={styles.upcomingRow}>
+                      <Ionicons name="hourglass-outline" size={12} color={isDark ? '#38BDF8' : '#2563EB'} />
+                      <Text style={[styles.upcomingText, { color: isDark ? '#38BDF8' : '#2563EB' }]}>
+                        Začíná za {subject.startMinutes - currentMinutes} min
+                      </Text>
                     </View>
                   )}
 
@@ -370,6 +723,8 @@ export function ScheduleScreen({
           })
         )}
       </View>
+        </>
+      )}
 
       {/* Lesson Details Modal */}
       <BottomSheet visible={!!selectedSubject} onClose={() => setSelectedSubject(null)}>
@@ -629,6 +984,19 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     fontWeight: '800',
   },
+  jumpTodayBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+  },
+  jumpTodayBtnText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
   dayStatsBadge: {
     fontSize: 12,
     fontWeight: '700',
@@ -716,6 +1084,10 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.5,
   },
+  ongoingBlock: {
+    gap: 6,
+    alignSelf: 'stretch',
+  },
   ongoingRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -730,6 +1102,30 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     color: '#10B981',
+  },
+  lessonProgressBarTrack: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(16,185,129,0.18)',
+    overflow: 'hidden',
+  },
+  lessonProgressBarFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  upcomingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(56,189,248,0.12)',
+  },
+  upcomingText: {
+    fontSize: 11,
+    fontWeight: '700',
   },
   subjectName: {
     fontSize: 16,
@@ -879,5 +1275,179 @@ const styles = StyleSheet.create({
   actionSecondaryText: {
     fontSize: 14,
     fontWeight: '700',
+  },
+
+  // Styly pro přepínač a týdenní kalendářní pohled
+  headerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  viewModeSwitcher: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 3,
+    gap: 3,
+  },
+  viewModeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 9,
+    gap: 6,
+  },
+  viewModeBtnActive: {
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  viewModeBtnText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
+  weeklyGridScroll: {
+    paddingVertical: 6,
+    paddingBottom: 24,
+    minWidth: '100%',
+  },
+  weeklyGridContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    minWidth: '100%',
+  },
+  weeklyColumn: {
+    flex: 1,
+    minWidth: 155,
+    maxWidth: 320,
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  weeklyColumnHeader: {
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    gap: 4,
+  },
+  weeklyHeaderTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  weeklyDayLabel: {
+    fontSize: 14.5,
+    fontWeight: '800',
+  },
+  weeklyTodayPill: {
+    backgroundColor: '#0284C7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  weeklyTodayPillText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0.4,
+  },
+  weeklyHeaderSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  weeklyDateText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+  },
+  weeklyCountText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  weeklyLessonsList: {
+    padding: 10,
+    gap: 10,
+    flex: 1,
+  },
+  weeklyEmptyDay: {
+    flex: 1,
+    minHeight: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 20,
+  },
+  weeklyEmptyText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  weeklyLessonCard: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  weeklyCardStripe: {
+    width: 4,
+  },
+  weeklyCardContent: {
+    flex: 1,
+    padding: 10,
+    gap: 6,
+  },
+  weeklyCardTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  weeklyCardTime: {
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  weeklyCodeBadge: {
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 5,
+    borderWidth: 1,
+  },
+  weeklyCodeText: {
+    fontSize: 9.5,
+    fontWeight: '800',
+  },
+  weeklyOngoingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  weeklyOngoingText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#10B981',
+    letterSpacing: 0.3,
+  },
+  weeklySubjectName: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    lineHeight: 16,
+  },
+  weeklyMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  weeklyMetaText: {
+    fontSize: 10.5,
+    fontWeight: '500',
+    flex: 1,
   },
 });

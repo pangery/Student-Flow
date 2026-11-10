@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useEffect, useState } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Linking, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { cleanSubjectName, deadlineLabel } from '../services/schoolDisplay';
 import { filterCurrentSemesterTasks, getSemesterForDate } from '../services/semester';
 import { Screen } from '../components/Screen';
@@ -43,37 +43,61 @@ export function DashboardScreen({
 }: Props) {
   const theme = useAppTheme();
   const isDark = theme.isDark;
-  const dynamicThemes = getSubjectThemes(isDark);
+  const dynamicThemes = useMemo(() => getSubjectThemes(isDark), [isDark]);
 
-  const currentSemester = getSemesterForDate();
-  const semesterTasks = filterCurrentSemesterTasks(data.tasks, currentSemester);
-  const activeTasks = semesterTasks.filter((task) => !task.isCompleted);
-  const nextTask = [...activeTasks].sort((a, b) => (a.dueDate || '9999').localeCompare(b.dueDate || '9999'))[0];
-  const now = new Date();
-  const today = now.getDay() + 1; // 2 = Monday ... 6 = Friday
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
-  const todaySubjects = data.subjects
-    .filter((subject) => subject.weekday === today && (!subject.date || new Date(subject.date).toDateString() === now.toDateString()))
-    .sort((a, b) => a.startMinutes - b.startMinutes);
-
-  const ongoingSubject = todaySubjects.find(
-    (s) => currentMinutes >= s.startMinutes && currentMinutes <= s.endMinutes
+  const currentSemester = useMemo(() => getSemesterForDate(), []);
+  const semesterTasks = useMemo(
+    () => filterCurrentSemesterTasks(data.tasks, currentSemester),
+    [data.tasks, currentSemester]
   );
+  const activeTasks = useMemo(
+    () => semesterTasks.filter((task) => !task.isCompleted),
+    [semesterTasks]
+  );
+  const nextTask = useMemo(
+    () => [...activeTasks].sort((a, b) => (a.dueDate || '9999').localeCompare(b.dueDate || '9999'))[0],
+    [activeTasks]
+  );
+
+  const now = useMemo(() => new Date(), []);
+  const today = useMemo(() => now.getDay() + 1, [now]);
+  const currentMinutes = useMemo(() => now.getHours() * 60 + now.getMinutes(), [now]);
+  const currentHour = useMemo(() => now.getHours(), [now]);
 
   const [cachedBooksCount, setCachedBooksCount] = useState<number>(0);
 
   useEffect(() => {
-    textbookService.getCachedMeta().then((meta) => {
+    textbookService.getCachedMeta(data.uuIdentity || 'default').then((meta) => {
       setCachedBooksCount(Object.keys(meta).length);
     }).catch(() => undefined);
-  }, []);
+  }, [data.uuIdentity, data.subjects]);
 
-  const todayFormatted = now.toLocaleDateString('cs-CZ', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  });
+  const { todaySubjects, ongoingSubject, todayFormatted } = useMemo(() => {
+    const todaySubs = data.subjects
+      .filter((subject) => subject.weekday === today && (!subject.date || new Date(subject.date).toDateString() === now.toDateString()))
+      .sort((a, b) => a.startMinutes - b.startMinutes);
+
+    const ongoing = todaySubs.find(
+      (s) => currentMinutes >= s.startMinutes && currentMinutes <= s.endMinutes
+    );
+
+    const formatted = now.toLocaleDateString('cs-CZ', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+    });
+
+    return { todaySubjects: todaySubs, ongoingSubject: ongoing, todayFormatted: formatted };
+  }, [data.subjects, today, now, currentMinutes]);
+
+  const greeting =
+    currentHour >= 5 && currentHour < 12
+      ? 'Dobré ráno'
+      : currentHour >= 12 && currentHour < 18
+      ? 'Krásné odpoledne'
+      : currentHour >= 18 && currentHour < 22
+      ? 'Příjemný večer'
+      : 'Dobrou noc';
 
   const displayName = data.studentName || 'Student';
   const displayInitials = displayName
@@ -84,9 +108,15 @@ export function DashboardScreen({
     .slice(0, 2)
     .toUpperCase();
 
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 1024;
+
   return (
     <Screen>
-      {/* Karta studenta a dnešní přehled */}
+      <View style={isDesktop ? styles.desktopTwoColContainer : undefined}>
+        {/* Levý sloupec (Hero + Dnešní výuka) */}
+        <View style={isDesktop ? styles.desktopLeftCol : undefined}>
+          {/* Karta studenta a dnešní přehled */}
       <LinearGradient
         colors={
           isDark
@@ -106,7 +136,17 @@ export function DashboardScreen({
         ]}
       >
         {/* Top Profile & Connection Bar */}
-        <View style={styles.heroTopBar}>
+        <View
+          style={[
+            styles.heroTopBar,
+            isDesktop && {
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+            },
+          ]}
+        >
           <View style={styles.profileGroup}>
             <View
               style={[
@@ -217,7 +257,7 @@ export function DashboardScreen({
         <View style={styles.heroGreeting}>
           <View style={styles.dateChipRow}>
             <Text style={[styles.heroDate, { color: isDark ? '#38BDF8' : '#2563EB' }]}>
-              {todayFormatted.toUpperCase()}
+              {greeting.toUpperCase()} • {todayFormatted.toUpperCase()}
             </Text>
             <View
               style={[
@@ -232,7 +272,9 @@ export function DashboardScreen({
               </Text>
             </View>
           </View>
-          <Text style={[styles.heroHeadline, { color: theme.text }]}>Přehled dnešního dne</Text>
+          <Text style={[styles.heroHeadline, { color: theme.text }]}>
+            {displayName ? `Ahoj, ${displayName.split(' ')[0]}!` : 'Přehled dnešního dne'}
+          </Text>
         </View>
 
         {/* 3 Translucent Metric Glass Tiles */}
@@ -316,78 +358,7 @@ export function DashboardScreen({
         </View>
       </LinearGradient>
 
-
-      {/* Quick Access Shortcut Pills */}
-      <View style={styles.quickShortcutsRow}>
-        {[
-          { label: 'Rozvrh', icon: 'calendar-outline', tab: 'Rozvrh', color: isDark ? '#38BDF8' : '#2563EB' },
-          { label: 'Úkoly', icon: 'checkbox-outline', tab: 'Úkoly', color: isDark ? '#C084FC' : '#7C3AED' },
-          { label: 'Učebnice', icon: 'book-outline', tab: 'Učebnice', color: isDark ? '#34D399' : '#059669' },
-          { label: 'Zkoušky', icon: 'ribbon-outline', tab: 'Zkouška', color: isDark ? '#F59E0B' : '#D97706' },
-        ].map((s) => (
-          <Pressable
-            key={s.label}
-            onPress={() => onNavigateToTab?.(s.tab)}
-            style={({ pressed }) => [
-              styles.shortcutBtn,
-              {
-                backgroundColor: theme.surface,
-                borderColor: theme.border,
-                shadowColor: theme.cardShadow,
-                shadowOpacity: theme.cardShadowOpacity,
-              },
-              pressed && { opacity: 0.8, transform: [{ scale: 0.97 }] },
-            ]}
-          >
-            <View style={[styles.shortcutIconWrap, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9' }]}>
-              <Ionicons name={s.icon as any} size={15} color={s.color} />
-            </View>
-            <Text style={[styles.shortcutLabel, { color: theme.text }]}>{s.label}</Text>
-          </Pressable>
-        ))}
-      </View>
-
-      {/* Push Notifications Status Card */}
-      <View
-        style={[
-          styles.notifBannerCard,
-          {
-            backgroundColor: isDark ? 'rgba(30, 41, 59, 0.7)' : '#FFFFFF',
-            borderColor: isDark ? 'rgba(56, 189, 248, 0.2)' : 'rgba(37, 99, 235, 0.15)',
-            shadowColor: theme.cardShadow,
-            shadowOpacity: theme.cardShadowOpacity,
-          },
-        ]}
-      >
-        <View style={styles.notifBannerLeft}>
-          <View style={[styles.notifIconWrap, { backgroundColor: isDark ? 'rgba(56, 189, 248, 0.15)' : 'rgba(37, 99, 235, 0.1)' }]}>
-            <Ionicons name="notifications" size={19} color={isDark ? '#38BDF8' : '#2563EB'} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.notifBannerTitle, { color: theme.text }]}>Oznámení jsou aktivní</Text>
-            <Text style={[styles.notifBannerSub, { color: theme.secondary }]}>
-              Upozornění na termíny úkolů a zkoušek ({currentSemester.code})
-            </Text>
-          </View>
-        </View>
-        {Boolean(onTestNotification) && (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Vyzkoušet notifikaci"
-            onPress={onTestNotification}
-            style={({ pressed }) => [
-              styles.notifTestBtn,
-              { backgroundColor: isDark ? '#0284C7' : '#2563EB' },
-              pressed && { opacity: 0.8, transform: [{ scale: 0.96 }] },
-            ]}
-          >
-            <Ionicons name="paper-plane-outline" size={13} color="#FFFFFF" />
-            <Text style={styles.notifTestBtnText}>Test</Text>
-          </Pressable>
-        )}
-      </View>
-
-      {/* Ongoing lesson banner if currently happening */}
+          {/* Ongoing lesson banner if currently happening */}
       {ongoingSubject && (
         <Pressable
           onPress={() => onNavigateToTab?.('Rozvrh')}
@@ -397,7 +368,7 @@ export function DashboardScreen({
               backgroundColor: isDark ? 'rgba(16,185,129,0.12)' : '#ECFDF5',
               borderColor: isDark ? 'rgba(16,185,129,0.35)' : '#A7F3D0',
             },
-            pressed && { opacity: 0.85 },
+            pressed && { opacity: 0.85, transform: [{ scale: 0.99 }] },
           ]}
         >
           <View style={styles.ongoingHeaderRow}>
@@ -406,7 +377,7 @@ export function DashboardScreen({
               <Text style={styles.ongoingBadgeTitle}>PRÁVĚ PROBÍHÁ VÝUKA</Text>
             </View>
             <Text style={[styles.ongoingTimeText, { color: isDark ? '#34D399' : '#059669' }]}>
-              do {formatTime(ongoingSubject.endMinutes)}
+              zbývá {Math.max(1, ongoingSubject.endMinutes - currentMinutes)} min (do {formatTime(ongoingSubject.endMinutes)})
             </Text>
           </View>
           <Text style={[styles.ongoingSubjectName, { color: theme.text }]}>
@@ -418,10 +389,28 @@ export function DashboardScreen({
               {ongoingSubject.location} · {ongoingSubject.teacher}
             </Text>
           </View>
+
+          {/* Mini progress bar */}
+          <View
+            style={[
+              styles.ongoingProgressBarTrack,
+              { backgroundColor: isDark ? 'rgba(16,185,129,0.2)' : 'rgba(16,185,129,0.25)' },
+            ]}
+          >
+            <View
+              style={[
+                styles.ongoingProgressBarFill,
+                {
+                  width: `${Math.min(100, Math.max(5, Math.round(((currentMinutes - ongoingSubject.startMinutes) / (ongoingSubject.endMinutes - ongoingSubject.startMinutes)) * 100)))}%`,
+                  backgroundColor: isDark ? '#34D399' : '#10B981',
+                },
+              ]}
+            />
+          </View>
         </Pressable>
       )}
 
-      {/* Today Schedule Timeline */}
+          {/* Today Schedule Timeline */}
       <View style={styles.sectionWrap}>
         <View style={styles.sectionHeader}>
           <View style={styles.sectionHeaderTitleGroup}>
@@ -529,8 +518,41 @@ export function DashboardScreen({
           </View>
         )}
       </View>
+        </View>
 
-      {/* Upcoming Deadline Card with interactive checkbox */}
+        {/* Pravý sloupec (Rychlé akce + Úkoly + Učebnice + Notifikace) */}
+        <View style={isDesktop ? styles.desktopRightCol : undefined}>
+          {/* Quick Access Shortcut Pills */}
+      <View style={styles.quickShortcutsRow}>
+        {[
+          { label: 'Rozvrh', icon: 'calendar-outline', tab: 'Rozvrh', color: isDark ? '#38BDF8' : '#2563EB' },
+          { label: 'Úkoly', icon: 'checkbox-outline', tab: 'Úkoly', color: isDark ? '#C084FC' : '#7C3AED' },
+          { label: 'Učebnice', icon: 'book-outline', tab: 'Učebnice', color: isDark ? '#34D399' : '#059669' },
+          { label: 'Zkoušky', icon: 'ribbon-outline', tab: 'Zkouška', color: isDark ? '#F59E0B' : '#D97706' },
+        ].map((s) => (
+          <Pressable
+            key={s.label}
+            onPress={() => onNavigateToTab?.(s.tab)}
+            style={({ pressed }) => [
+              styles.shortcutBtn,
+              {
+                backgroundColor: theme.surface,
+                borderColor: theme.border,
+                shadowColor: theme.cardShadow,
+                shadowOpacity: theme.cardShadowOpacity,
+              },
+              pressed && { opacity: 0.8, transform: [{ scale: 0.97 }] },
+            ]}
+          >
+            <View style={[styles.shortcutIconWrap, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9' }]}>
+              <Ionicons name={s.icon as any} size={15} color={s.color} />
+            </View>
+            <Text style={[styles.shortcutLabel, { color: theme.text }]}>{s.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+          {/* Upcoming Deadline Card with interactive checkbox */}
       <View style={styles.sectionWrap}>
         <View style={styles.sectionHeader}>
           <View style={styles.sectionHeaderTitleGroup}>
@@ -632,7 +654,7 @@ export function DashboardScreen({
         )}
       </View>
 
-      {/* Offline Learning Hub Card - Tappable to open Textbooks */}
+          {/* Offline Learning Hub Card - Tappable to open Textbooks */}
       <Pressable
         onPress={() => onNavigateToTab?.('Učebnice')}
         style={({ pressed }) => [
@@ -667,6 +689,48 @@ export function DashboardScreen({
         </View>
         <Ionicons name="chevron-forward" size={18} color={isDark ? '#34D399' : '#059669'} />
       </Pressable>
+
+          {/* Push Notifications Status Card */}
+      <View
+        style={[
+          styles.notifBannerCard,
+          {
+            backgroundColor: isDark ? 'rgba(30, 41, 59, 0.7)' : '#FFFFFF',
+            borderColor: isDark ? 'rgba(56, 189, 248, 0.2)' : 'rgba(37, 99, 235, 0.15)',
+            shadowColor: theme.cardShadow,
+            shadowOpacity: theme.cardShadowOpacity,
+          },
+        ]}
+      >
+        <View style={styles.notifBannerLeft}>
+          <View style={[styles.notifIconWrap, { backgroundColor: isDark ? 'rgba(56, 189, 248, 0.15)' : 'rgba(37, 99, 235, 0.1)' }]}>
+            <Ionicons name="notifications" size={19} color={isDark ? '#38BDF8' : '#2563EB'} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.notifBannerTitle, { color: theme.text }]}>Oznámení jsou aktivní</Text>
+            <Text style={[styles.notifBannerSub, { color: theme.secondary }]}>
+              Upozornění na termíny úkolů a zkoušek ({currentSemester.code})
+            </Text>
+          </View>
+        </View>
+        {Boolean(onTestNotification) && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Vyzkoušet notifikaci"
+            onPress={onTestNotification}
+            style={({ pressed }) => [
+              styles.notifTestBtn,
+              { backgroundColor: isDark ? '#0284C7' : '#2563EB' },
+              pressed && { opacity: 0.8, transform: [{ scale: 0.96 }] },
+            ]}
+          >
+            <Ionicons name="paper-plane-outline" size={13} color="#FFFFFF" />
+            <Text style={styles.notifTestBtnText}>Test</Text>
+          </Pressable>
+        )}
+      </View>
+        </View>
+      </View>
     </Screen>
   );
 }
@@ -949,6 +1013,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
+  ongoingProgressBarTrack: {
+    height: 4,
+    borderRadius: 2,
+    marginTop: 2,
+    overflow: 'hidden',
+  },
+  ongoingProgressBarFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
   sectionWrap: {
     gap: 10,
   },
@@ -1072,7 +1146,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   taskCard: {
-    flexWrap: 'wrap',
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 18,
@@ -1214,5 +1287,22 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 11.5,
     fontWeight: '700',
+  },
+  // Dvoulícní responzivní desktop layout
+  desktopTwoColContainer: {
+    flexDirection: 'row',
+    gap: 20,
+    alignItems: 'flex-start',
+    width: '100%',
+  },
+  desktopLeftCol: {
+    flex: 6.2,
+    minWidth: 0,
+    gap: 16,
+  },
+  desktopRightCol: {
+    flex: 4.8,
+    minWidth: 0,
+    gap: 16,
   },
 });

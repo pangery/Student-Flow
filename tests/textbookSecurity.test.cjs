@@ -106,6 +106,47 @@ test('runAutoCacheForEnrolledSubjects caches only subjects student is enrolled i
   assert.equal(secondRun.newlyCached, 0);
 });
 
+test('runAutoCacheForEnrolledSubjects automatically generates and caches syllabus textbooks for all subjects', async () => {
+  const service = loadTextbookService();
+  const studentId = '24-all-subjects';
+  const subjects = [
+    {
+      id: 'sub-mat',
+      name: 'Matematická analýza 1',
+      code: 'UU.MA1',
+      weekday: 2,
+      startMinutes: 540,
+      endMinutes: 630,
+    },
+    {
+      id: 'sub-sec',
+      name: 'Kybernetická bezpečnost',
+      code: 'UU.SEC',
+      weekday: 3,
+      startMinutes: 600,
+      endMinutes: 690,
+    },
+  ];
+
+  const result = await service.textbookService.runAutoCacheForEnrolledSubjects(subjects, studentId);
+  assert.equal(result.attempted, 2);
+  assert.equal(result.newlyCached, 2);
+  assert.equal(result.failed, 0);
+
+  const meta = await service.textbookService.getCachedMeta(studentId);
+  assert.ok(meta['book-subj-sub-mat']);
+  assert.ok(meta['book-subj-sub-sec']);
+  assert.ok(meta['book-subj-sub-mat'].checksum);
+  assert.ok(meta['book-subj-sub-sec'].checksum);
+
+  // Can be read offline
+  const readBook = await service.textbookService.loadTextbookForReading('book-subj-sub-mat', studentId, subjects);
+  assert.ok(readBook);
+  assert.equal(readBook.fromCache, true);
+  assert.equal(readBook.textbook.title.includes('Matematická analýza 1'), true);
+  assert.equal(readBook.textbook.chapters.length, 4);
+});
+
 test('loadTextbookForReading verifies integrity and rejects tampered local cache', async () => {
   const store = new Map();
   const secureStore = new Map();

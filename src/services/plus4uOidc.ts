@@ -129,6 +129,48 @@ export async function exchangeCode(
   return parsed;
 }
 
+/** Krok 2b: Tichá obnova expirovaného tokenu pomocí refresh_tokenu bez zásahu uživatele. */
+export async function refreshAccessToken(
+  refreshToken: string
+): Promise<{ id_token: string; refresh_token?: string; [key: string]: any }> {
+  const metadata = await getMetadata();
+  telemetry.call({
+    uri: metadata.token_endpoint,
+    method: 'POST',
+    title: 'Tichá obnova tokenu (grant_type: refresh_token)',
+    detail: 'Automatická obnova expirovaného tokenu na pozadí bez nutnosti zadávat heslo.',
+    stage: 'token',
+  });
+  const res = await fetch(metadata.token_endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      client_id: OIDC_CLIENT_ID,
+      client_secret: OIDC_CLIENT_SECRET,
+      scope: OIDC_SCOPE,
+    }),
+  });
+  const body = await res.text();
+  if (!res.ok) {
+    throw new Error(`Obnova tokenu selhala (HTTP ${res.status}): ${body}`);
+  }
+  const parsed = JSON.parse(body);
+  telemetry.call({
+    uri: metadata.token_endpoint,
+    method: 'POST',
+    title: 'Token úspěšně tiše obnoven',
+    detail: 'Student zůstává trvale přihlášen bez otravných dialogů.',
+    response: {
+      status: res.status,
+      token_type: parsed.token_type,
+    },
+    stage: 'token',
+  });
+  return parsed;
+}
+
 /**
  * Dekódování payloadu JWT bez nutnosti externí knihovny.
  * Správně zpracovává UTF-8 diakritiku (např. české znaky ve jménech).

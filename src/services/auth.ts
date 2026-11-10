@@ -6,6 +6,7 @@ import {
   getDisplayName,
   getUuIdentity,
   isExpired,
+  refreshAccessToken,
   type IdTokenClaims,
 } from './plus4uOidc';
 import {
@@ -17,6 +18,7 @@ import {
 export { isSystemBrowserLoginAvailable, LoginCancelledError, loginWithSystemBrowser };
 
 const TOKEN_KEY = 'studentflow.plus4u.id_token';
+const REFRESH_TOKEN_KEY = 'studentflow.plus4u.refresh_token';
 
 export type Session = {
   idToken: string;
@@ -52,13 +54,32 @@ export const tokenStore = {
     } catch {}
     return AsyncStorage.setItem(TOKEN_KEY, token);
   },
+  loadRefreshToken: async () => {
+    try {
+      if (await SecureStore.isAvailableAsync?.()) {
+        return await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
+      }
+    } catch {}
+    return AsyncStorage.getItem(REFRESH_TOKEN_KEY);
+  },
+  saveRefreshToken: async (token: string) => {
+    try {
+      if (await SecureStore.isAvailableAsync?.()) {
+        return await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, token);
+      }
+    } catch {}
+    return AsyncStorage.setItem(REFRESH_TOKEN_KEY, token);
+  },
   clear: async () => {
     try {
       if (await SecureStore.isAvailableAsync?.()) {
-        return await SecureStore.deleteItemAsync(TOKEN_KEY);
+        await SecureStore.deleteItemAsync(TOKEN_KEY);
+        await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
+        return;
       }
     } catch {}
-    return AsyncStorage.removeItem(TOKEN_KEY);
+    await AsyncStorage.removeItem(TOKEN_KEY);
+    await AsyncStorage.removeItem(REFRESH_TOKEN_KEY);
   },
 };
 
@@ -72,6 +93,7 @@ export type SessionState = {
   isExpired: boolean;
   expiredIdentity: string | null;
   expiredName: string | null;
+  autoRefreshed?: boolean;
 };
 
 export async function checkStoredSessionState(): Promise<SessionState> {
@@ -83,6 +105,30 @@ export async function checkStoredSessionState(): Promise<SessionState> {
 
     const session = toSession(token);
     if (isExpired(session.claims)) {
+      // 1. Pokus o tichou obnovu tokenu na pozadí pomocí refresh_tokenu (0 kliknutí, bez zadávání hesla)
+      const refreshToken = await tokenStore.loadRefreshToken();
+      if (refreshToken && refreshToken !== token) {
+        try {
+          const renewed = await refreshAccessToken(refreshToken);
+          if (renewed?.id_token) {
+            const renewedSession = toSession(renewed.id_token);
+            await tokenStore.save(renewed.id_token);
+            if (renewed.refresh_token) {
+              await tokenStore.saveRefreshToken(renewed.refresh_token);
+            }
+            return {
+              session: renewedSession,
+              isExpired: false,
+              expiredIdentity: null,
+              expiredName: null,
+              autoRefreshed: true,
+            };
+          }
+        } catch (refreshErr) {
+          console.warn('Tichá obnova relace přes refresh token se nezdařila:', refreshErr);
+        }
+      }
+
       return {
         session: null,
         isExpired: true,
@@ -108,7 +154,7 @@ export async function restoreSession(): Promise<Session | null> {
 }
 
 /**
- * Dokončí přihlášení výměnou autorizačního kódu za id_token.
+ * Dokončí přihlášení výměnou autorizačního kódu za id_token a refresh_token.
  * redirectUri musí přesně odpovídat adrese předané do authorize požadavku.
  */
 export async function completePlus4ULogin(
@@ -118,6 +164,9 @@ export async function completePlus4ULogin(
   const tokens = await exchangeCode(code, redirectUri);
   const session = toSession(tokens.id_token);
   await tokenStore.save(tokens.id_token);
+  if (tokens.refresh_token) {
+    await tokenStore.saveRefreshToken(tokens.refresh_token);
+  }
   return session;
 }
 

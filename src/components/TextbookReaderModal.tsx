@@ -1,5 +1,6 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   Modal,
@@ -39,6 +40,38 @@ export function TextbookReaderModal({
   const [completedChapters, setCompletedChapters] = useState<Record<string, boolean>>({});
   const [copiedSnippetIndex, setCopiedSnippetIndex] = useState<number | null>(null);
 
+  // Restore saved chapter index & completed chapters from storage
+  useEffect(() => {
+    if (!textbook?.id || !visible) return;
+    const progressKey = `studentflow.reading.progress.${textbook.id}`;
+    AsyncStorage.getItem(progressKey).then((saved) => {
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (
+            typeof parsed.chapterIndex === 'number' &&
+            parsed.chapterIndex >= 0 &&
+            parsed.chapterIndex < textbook.chapters.length
+          ) {
+            setActiveChapterIndex(parsed.chapterIndex);
+          }
+          if (parsed.completed && typeof parsed.completed === 'object') {
+            setCompletedChapters(parsed.completed);
+          }
+        } catch {}
+      }
+    });
+  }, [textbook?.id, visible]);
+
+  const saveProgress = (idx: number, completed: Record<string, boolean>) => {
+    if (!textbook?.id) return;
+    const progressKey = `studentflow.reading.progress.${textbook.id}`;
+    AsyncStorage.setItem(
+      progressKey,
+      JSON.stringify({ chapterIndex: idx, completed })
+    ).catch(() => {});
+  };
+
   if (!textbook || !textbook.chapters.length) return null;
 
   const chapters = textbook.chapters;
@@ -48,10 +81,19 @@ export function TextbookReaderModal({
   const isCurrentChapterCompleted = Boolean(completedChapters[currentChapter.id]);
 
   const toggleChapterCompleted = () => {
-    setCompletedChapters((prev) => ({
-      ...prev,
-      [currentChapter.id]: !prev[currentChapter.id],
-    }));
+    setCompletedChapters((prev) => {
+      const next = {
+        ...prev,
+        [currentChapter.id]: !prev[currentChapter.id],
+      };
+      saveProgress(activeChapterIndex, next);
+      return next;
+    });
+  };
+
+  const handleSelectChapter = (idx: number) => {
+    setActiveChapterIndex(idx);
+    saveProgress(idx, completedChapters);
   };
 
   const handleCopyCode = (sIndex: number) => {
@@ -190,7 +232,7 @@ export function TextbookReaderModal({
               return (
                 <Pressable
                   key={ch.id}
-                  onPress={() => setActiveChapterIndex(idx)}
+                  onPress={() => handleSelectChapter(idx)}
                   style={[
                     styles.tabItem,
                     {
@@ -229,6 +271,8 @@ export function TextbookReaderModal({
         {/* Reader Body */}
         <ScrollView
           style={styles.contentScroll}
+          scrollEventThrottle={16}
+          removeClippedSubviews={Platform.OS === 'android'}
           contentContainerStyle={[
             styles.contentContainer,
             { paddingBottom: insets.bottom + 90 },
@@ -437,7 +481,7 @@ export function TextbookReaderModal({
         >
           <Pressable
             disabled={activeChapterIndex === 0}
-            onPress={() => setActiveChapterIndex((p) => Math.max(0, p - 1))}
+            onPress={() => handleSelectChapter(Math.max(0, activeChapterIndex - 1))}
             style={({ pressed }) => [
               styles.navBtn,
               {
@@ -459,7 +503,7 @@ export function TextbookReaderModal({
           <Pressable
             disabled={activeChapterIndex === chapters.length - 1}
             onPress={() =>
-              setActiveChapterIndex((p) => Math.min(chapters.length - 1, p + 1))
+              handleSelectChapter(Math.min(chapters.length - 1, activeChapterIndex + 1))
             }
             style={({ pressed }) => [
               styles.navBtn,

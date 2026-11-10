@@ -3,10 +3,13 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AppState, Platform, useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { enableScreens } from 'react-native-screens';
 import { Plus4ULoginModal } from './src/components/Plus4ULoginModal';
+
+enableScreens(true);
 import { SchoolPortalModal } from './src/components/SchoolPortalModal';
 import { SyncSuccessToast, type SyncToastPayload } from './src/components/SyncSuccessToast';
 import { AdaptiveTabBar } from './src/navigation/AdaptiveTabBar';
@@ -396,36 +399,99 @@ export default function App() {
     );
   };
 
-  const handleToggleTask = (id: string) => {
+  const handleToggleTask = useCallback((id: string) => {
     const task = dataRef.current.tasks.find(item => item.id === id);
     if (task?.source === 'unicorn') return;
     update({
-      ...data,
-      tasks: data.tasks.map((task) =>
+      ...dataRef.current,
+      tasks: dataRef.current.tasks.map((task) =>
         task.id === id ? { ...task, isCompleted: !task.isCompleted } : task
       ),
     });
-  };
+  }, []);
 
-  const handleAddTask = (newTask: TaskItem) => {
+  const handleAddTask = useCallback((newTask: TaskItem) => {
     update({
-      ...data,
-      tasks: [newTask, ...data.tasks],
+      ...dataRef.current,
+      tasks: [newTask, ...dataRef.current.tasks],
     });
-  };
+  }, []);
 
-  const handleDeleteTask = (id: string) => {
+  const handleDeleteTask = useCallback((id: string) => {
     if (dataRef.current.tasks.find(item => item.id === id)?.source) return;
     update({
-      ...data,
-      tasks: data.tasks.filter((task) => task.id !== id),
+      ...dataRef.current,
+      tasks: dataRef.current.tasks.filter((task) => task.id !== id),
     });
-  };
+  }, []);
 
-  const completeOnboarding = () => {
+  const completeOnboarding = useCallback(() => {
     setShowOnboarding(false);
     AsyncStorage.setItem(storageKeyOnboarding, 'true').catch(() => undefined);
-  };
+  }, []);
+
+  const handleOpenOnboarding = useCallback(() => setShowOnboarding(true), []);
+  const handleOpenSourceUrl = useCallback((url: string, title?: string) => setPortalTarget({ url, title }), []);
+
+  const renderDashboard = useCallback(({ navigation }: any) => (
+    <DashboardScreen
+      data={data}
+      connected={connected}
+      sessionExpired={sessionExpired}
+      onRenewLogin={handleStartLogin}
+      onLogin={handleStartLogin}
+      onLogout={logout}
+      onOpenOnboarding={handleOpenOnboarding}
+      onNavigateToTab={(tabName) => navigation.navigate(tabName)}
+      onToggleTask={handleToggleTask}
+      onSyncDiary={handleManualSync}
+      isSyncing={isSyncing}
+      onTestNotification={handleTestNotification}
+      onOpenSourceUrl={handleOpenSourceUrl}
+    />
+  ), [data, connected, sessionExpired, handleStartLogin, logout, handleOpenOnboarding, handleToggleTask, handleManualSync, isSyncing, handleTestNotification, handleOpenSourceUrl]);
+
+  const renderSchedule = useCallback(({ navigation }: any) => (
+    <ScheduleScreen
+      subjects={data.subjects}
+      onNavigateToTasks={() => navigation.navigate('Úkoly')}
+      onNavigateToTextbooks={() => navigation.navigate('Učebnice')}
+    />
+  ), [data.subjects]);
+
+  const renderTextbooks = useCallback(() => (
+    <TextbooksScreen
+      studentSubjects={data.subjects}
+      studentIdentity={session?.uuIdentity ?? "default"}
+      sessionToken={session?.idToken}
+    />
+  ), [data.subjects, session?.uuIdentity, session?.idToken]);
+
+  const renderTasks = useCallback(() => (
+    <TasksScreen
+      tasks={data.tasks}
+      subjects={data.subjects}
+      initialSelectedTaskId={activeTaskId}
+      onToggle={handleToggleTask}
+      onAddTask={handleAddTask}
+      onDeleteTask={handleDeleteTask}
+      onOpenSourceUrl={handleOpenSourceUrl}
+      onRefresh={session ? handleManualSync : undefined}
+      isRefreshing={isSyncing}
+    />
+  ), [data.tasks, data.subjects, activeTaskId, handleToggleTask, handleAddTask, handleDeleteTask, handleOpenSourceUrl, session, handleManualSync, isSyncing]);
+
+  const renderExams = useCallback(() => (
+    <ExamScreen
+      examDate={data.examDate}
+      exams={data.exams}
+      subjects={data.subjects}
+      initialSelectedExamId={activeExamId}
+      onSetDate={(examDate) => update({ ...dataRef.current, examDate })}
+      onUpdateExams={(exams) => update({ ...dataRef.current, exams })}
+      onOpenSourceUrl={handleOpenSourceUrl}
+    />
+  ), [data.examDate, data.exams, data.subjects, activeExamId, handleOpenSourceUrl]);
 
   const isDark = scheme === 'dark';
 
@@ -482,77 +548,17 @@ export default function App() {
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <NavigationContainer ref={navigationRef} theme={navigationTheme}>
         <Tab.Navigator
-          tabBar={(props) => <AdaptiveTabBar {...props} />}
+          tabBar={AdaptiveTabBar}
           screenOptions={{
             headerShown: false,
+            freezeOnBlur: true,
           }}
         >
-          <Tab.Screen name="Přehled">
-            {({ navigation }) => (
-              <DashboardScreen
-                data={data}
-                connected={connected}
-                sessionExpired={sessionExpired}
-                onRenewLogin={handleStartLogin}
-                onLogin={handleStartLogin}
-                onLogout={logout}
-                onOpenOnboarding={() => setShowOnboarding(true)}
-                onNavigateToTab={(tabName) => navigation.navigate(tabName)}
-                onToggleTask={handleToggleTask}
-                onSyncDiary={handleManualSync}
-                isSyncing={isSyncing}
-                onTestNotification={handleTestNotification}
-                onOpenSourceUrl={(url, title) => setPortalTarget({ url, title })}
-              />
-            )}
-          </Tab.Screen>
-          <Tab.Screen name="Rozvrh">
-            {({ navigation }) => (
-              <ScheduleScreen
-                subjects={data.subjects}
-                onNavigateToTasks={() => navigation.navigate('Úkoly')}
-                onNavigateToTextbooks={() => navigation.navigate('Učebnice')}
-              />
-            )}
-          </Tab.Screen>
-          <Tab.Screen name="Učebnice">
-            {() => (
-              <TextbooksScreen
-                key={session?.uuIdentity ?? "anonymous"}
-                studentSubjects={data.subjects}
-                studentIdentity={session?.uuIdentity ?? "default"}
-                sessionToken={session?.idToken}
-              />
-            )}
-          </Tab.Screen>
-          <Tab.Screen name="Úkoly">
-            {() => (
-              <TasksScreen
-                tasks={data.tasks}
-                subjects={data.subjects}
-                initialSelectedTaskId={activeTaskId}
-                onToggle={handleToggleTask}
-                onAddTask={handleAddTask}
-                onDeleteTask={handleDeleteTask}
-                onOpenSourceUrl={(url, title) => setPortalTarget({ url, title })}
-                onRefresh={session ? () => syncWithPlus4UDiary(session, true) : undefined}
-                isRefreshing={isSyncing}
-              />
-            )}
-          </Tab.Screen>
-          <Tab.Screen name="Zkouška">
-            {() => (
-              <ExamScreen
-                examDate={data.examDate}
-                exams={data.exams}
-                subjects={data.subjects}
-                initialSelectedExamId={activeExamId}
-                onSetDate={(examDate) => update({ ...data, examDate })}
-                onUpdateExams={(exams) => update({ ...data, exams })}
-                onOpenSourceUrl={(url, title) => setPortalTarget({ url, title })}
-              />
-            )}
-          </Tab.Screen>
+          <Tab.Screen name="Přehled" children={renderDashboard} />
+          <Tab.Screen name="Rozvrh" children={renderSchedule} />
+          <Tab.Screen name="Učebnice" children={renderTextbooks} />
+          <Tab.Screen name="Úkoly" children={renderTasks} />
+          <Tab.Screen name="Zkouška" children={renderExams} />
         </Tab.Navigator>
       </NavigationContainer>
 

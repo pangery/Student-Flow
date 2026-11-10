@@ -1,78 +1,88 @@
 # StudentFlow
 
-Multiplatformní studentská aplikace pro studenty Unicorn University postavená na React Native, Expo, TypeScriptu a Electronu pro **iOS, Android, macOS, Windows i Linux**.
+Multiplatformní klientská aplikace pro studijní agendu Unicorn University. Běží nativně na iOS, Androidu, macOS, Windows i Linuxu ze společného TypeScript základu.
 
-Kompletní technický popis architektury, datových toků a bezpečnostního modelu najdete v souboru **[DOKUMENTACE.md](DOKUMENTACE.md)**.
+Kompletní technická a architekturní dokumentace je k dispozici v souboru **[DOKUMENTACE.md](DOKUMENTACE.md)**.
 
 ---
 
-## Podporované platformy a spuštění
+## Přehled funkcionality
 
-### 1. Mobilní aplikace (iOS & Android)
+- **Autentizace a správa sezení (Plus4U OIDC):**
+  - Implementace protokolu OAuth 2.0 / OIDC Authorization Code Flow s PKCE.
+  - Hardwarové zabezpečení klíčů v Apple Keychain (iOS) a Android Keystore (Android).
+  - Tichá obnova JWT sezení na pozadí přes `offline_access` a `refresh_token` eliminující samovolné odhlašování studenta.
+- **Denní a týdenní rozvrh:**
+  - Synchronizace s diářem Plus4U Digital Workspace s automatickou detekcí učeben (*P301, LAB1, Teams*).
+  - Živý indikátor probíhající hodiny s odpočtem zbývajícího času a ukazatelem průběhu.
+  - Tlačítko rychlého návratu na dnešní den a přepínání denního a týdenního zobrazení.
+- **Úkoly a hodnocení (uuStudyEngine):**
+  - Autoritativní synchronizace zadání a známek se školním systémem.
+  - Vizuální prioritizace termínů (po termínu, dnes, zítra, dokončeno).
+  - Zvláštní označení pro distanční písemky zadané formou assignmentu.
+  - Filtrace semestru vylučující minulé ročníky z aktivních přehledů.
+- **Zkoušky a rezervace (uuBookingEngine):**
+  - Přehled vypsaných termínů zkoušek a zarezervovaných časů.
+  - Interaktivní checklisty přípravy na zkoušku s ukládáním průběhu.
+- **Offline knihovna a studijní materiály (uuBookKit):**
+  - Katalog učebnic organizovaný podle jednotlivých předmětů.
+  - Funkce rychlého stažení materiálů předmětu pro offline studium.
+  - Kontrola integrity stažených souborů pomocí 32bitového FNV-1a hashe s kryptografickou solí zařízení.
+  - Integrovaná čtečka s pamatováním naposledy čtené kapitoly a nastavením velikosti písma.
+- **Desktopové rozhraní:**
+  - Responzivní levý navigační panel s podporou macOS ovládacích prvků okna.
+  - Dvousloupcové zobrazení pro široké monitory (až 1440 px).
+  - Integrovaný lokální HTTP daemon pro rychlé načítání zdrojů v Electronu.
+
+---
+
+## Spuštění a vývoj
+
+### Požadavky
+- Node.js v20+ nebo v22+ LTS
+- npm v10+
+
+### Mobilní platformy (iOS & Android)
 ```bash
 npm install
-npm run ios        # Spuštění na iOS simulátoru / zařízení
-npm run android    # Spuštění na Android emulátoru / zařízení
+npm run ios        # Spuštění na iOS simulátoru
+npm run android    # Spuštění na Android emulátoru nebo připojeném zařízení
 ```
 
-### 2. Desktopové aplikace (macOS, Windows, Linux)
-Spuštění nativního desktopového okna:
+### Desktopová aplikace (macOS, Windows, Linux)
 ```bash
-npm run desktop        # Produkční desktopové okno
-npm run desktop:dev    # Vývojářský režim s live reloadem
+npm run desktop        # Spuštění okna aplikace v Electronu
+npm run desktop:dev    # Vývojový režim s live reloadem
 ```
 
-Sestavení instalačních balíčků:
-* **macOS**: `npm run dist:mac` (vytvoří `.dmg` a `.zip`)
-* **Windows**: `npm run dist:win` (vytvoří `.exe` instalátor i přenosnou portable verzi)
-* **Linux**: `npm run dist:linux` (vytvoří `.AppImage` a `.deb`)
-
-### 3. Webový prohlížeč
+### Webová verze
 ```bash
 npx expo start --web
 ```
 
----
-
-## Architektura a klíčové funkce
-
-### 1. Autentizace a bezpečnost
-* Využívá standardní **Plus4U OIDC** (OpenID Connect) Authorization Code Flow s PKCE.
-* Tokeny se v mobilních zařízeních ukládají do hardwarově šifrovaného úložiště (`expo-secure-store` – Apple Keychain / Android Keystore), na desktopu do zabezpečeného perzistentního úložiště s oddělením relace.
-* Do repozitáře nejsou vloženy žádné soukromé osobní přístupy ani cizí tokeny.
-
-### 2. Synchronizace rozvrhu a učeben
-* Rozvrh se načítá přes Plus4U Digital Workspace.
-* Automaticky extrahuje a zobrazuje kód a název učebny (včetně indikace virtuální učebny / Teams).
-* Karty rozvrhu zobrazují přesný čas, kód předmětu, vyučujícího i učebnu.
-
-### 3. Zadání, úkoly a zkoušky
-* Úkoly a testy se synchronizují s oficiálním systémem `uuStudyEngine`.
-* **Autoritativní synchronizace**: Otevření odkazu na úkol v portálu neoznačí úkol automaticky jako hotový – stav se ověřuje přímo ze školního systému po skutečném odevzdání studentem.
-* Úkoly jsou řazeny podle termínu odevzdání (nejbližší termíny nahoře).
-* Automatické filtrování podle aktuálního semestru s možností nahlédnout do archivu.
-
-### 4. Učebnice s offline režimem a kontrolou integrity
-* Učebnice vázané na zapsané předměty studenta.
-* Integrovaná čtečka kapitol se sledováním postupu, odhadem času čtení, nastavením velikosti písma a zvýrazněním kódu.
-* Funkce **Stáhnout semestr** pro kompletní přípravu offline studia.
-* **Kryptografická ochrana integrity (FNV-1a hash)**: Stažené soubory v lokálním úložišti jsou chráněny kontrolním součtem a hardwarovou solí, která zabraňuje neautorizovaným zásahům.
-
-### 5. Nativní rozhraní
-* Responzivní design optimalizovaný jak pro mobilní telefony, tak pro tablety i širokoúhlé monitory (až do 1040 px šířky).
-* Na iOS a desktopu plovoucí skleněné navigační menu (frosted glass) s efektem rozostření pozadí.
-* Na Androidu čistý Material 3 navigační panel.
+### Sestavení instalačních balíčků
+```bash
+npm run dist:mac      # Sestaví .dmg a .zip pro macOS
+npm run dist:win      # Sestaví instalátor .exe pro Windows
+npm run dist:linux    # Sestaví .AppImage a .deb balíčky pro Linux
+npm run dist:all      # Sestaví distribuční balíčky pro všechny platformy
+```
 
 ---
 
-## Ověření a testy
+## Testy a statická analýza
 
-V projektu je připravená sada unit testů pokrývající synchronizační engine, notifikace, integritu učebnic a expiraci relace:
+Sada 34 automatických integračních a jednotkových testů běžících v nativním testovacím runneru Node.js:
 
 ```bash
-# Kontrola typové správnosti TypeScriptu (0 chyb):
-npm run typecheck
-
-# Spuštění kompletní testovací sady (27 testů):
 npm test
+npm run typecheck
 ```
+
+---
+
+## Licence a autorství
+
+- **Autor:** Jan Gergel
+- **Platforma:** Unicorn University student ecosystem
+- **Licence:** MIT

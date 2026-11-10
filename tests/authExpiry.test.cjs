@@ -4,11 +4,19 @@ const fs = require('node:fs');
 const path = require('node:path');
 const ts = require('typescript');
 
-function loadAuthService(mockToken = null) {
+function loadAuthService(mockToken = null, refreshMock = null) {
   const output = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../src/services/auth.ts'), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   const mod = { exports: {} };
+  const store = new Map();
+  if (typeof mockToken === 'string') {
+    store.set('studentflow.plus4u.id_token', mockToken);
+  } else if (mockToken && typeof mockToken === 'object') {
+    if (mockToken.idToken) store.set('studentflow.plus4u.id_token', mockToken.idToken);
+    if (mockToken.refreshToken) store.set('studentflow.plus4u.refresh_token', mockToken.refreshToken);
+  }
+
   new Function('require', 'module', 'exports', output)(name => {
     if (name === './plus4uOidc') {
       const oidcOutput = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../src/services/plus4uOidc.ts'), 'utf8'), {
@@ -17,32 +25,34 @@ function loadAuthService(mockToken = null) {
       const oidcMod = { exports: {} };
       new Function('require', 'module', 'exports', oidcOutput)((dep) => {
         if (dep === './plus4uConfig') {
-          return { OIDC_CLIENT_ID: 'c', OIDC_CLIENT_SECRET: 's', OIDC_SCOPE: 'openid', OIDC_URI: 'https://oidc', REDIRECT_URI: 'https://red' };
+          return { OIDC_CLIENT_ID: 'c', OIDC_CLIENT_SECRET: 's', OIDC_SCOPE: 'openid offline_access', OIDC_URI: 'https://oidc', REDIRECT_URI: 'https://red' };
         }
         if (dep === './telemetry') {
           return { telemetry: { stage: () => {}, call: () => {} } };
         }
         throw new Error(`Unexpected oidc dep ${dep}`);
       }, oidcMod, oidcMod.exports);
+
+      if (refreshMock) {
+        oidcMod.exports.refreshAccessToken = refreshMock;
+      }
       return oidcMod.exports;
     }
     if (name === './systemBrowserLogin') {
       return { isSystemBrowserLoginAvailable: () => false, LoginCancelledError: class extends Error {}, loginWithSystemBrowser: async () => ({}) };
     }
     if (name === '@react-native-async-storage/async-storage') {
-      let asyncStored = mockToken;
       return {
-        getItem: async () => asyncStored,
-        setItem: async (k, v) => { asyncStored = v; },
-        removeItem: async () => { asyncStored = null; },
+        getItem: async (k) => store.get(k) ?? null,
+        setItem: async (k, v) => { store.set(k, String(v)); },
+        removeItem: async (k) => { store.delete(k); },
       };
     }
     if (name === 'expo-secure-store') {
-      let stored = mockToken;
       return {
-        getItemAsync: async () => stored,
-        setItemAsync: async (k, v) => { stored = v; },
-        deleteItemAsync: async () => { stored = null; },
+        getItemAsync: async (k) => store.get(k) ?? null,
+        setItemAsync: async (k, v) => { store.set(k, String(v)); },
+        deleteItemAsync: async (k) => { store.delete(k); },
       };
     }
     throw new Error(`Unexpected dependency ${name}`);
@@ -107,4 +117,46 @@ test('checkStoredSessionState returns valid session for unexpired token', async 
   assert.ok(state.session);
   assert.equal(state.session.uuIdentity, '4017-3144-1');
   assert.equal(state.session.name, 'Jan Gergel');
+});
+
+test('checkStoredSessionState silently refreshes expired token when refresh_token is present', async () => {
+  const pastExp = Math.floor(Date.now() / 1000) - 3600;
+  const expiredJwt = makeJwt({
+    uuidentity: '4017-3144-1',
+    name: 'Jan Gergel',
+    exp: pastExp,
+  });
+
+  const freshJwt = makeJwt({
+    uuidentity: '4017-3144-1',
+    name: 'Jan Gergel',
+    exp: Math.floor(Date.now() / 1000) + 7200,
+  });
+
+  let refreshCalled = false;
+  const mockRefresh = async (token) => {
+    assert.equal(token, 'valid-secret-refresh-token');
+    refreshCalled = true;
+    return {
+      id_token: freshJwt,
+      refresh_token: 'new-rotated-refresh-token',
+    };
+  };
+
+  const auth = loadAuthService(
+    {
+      idToken: expiredJwt,
+      refreshToken: 'valid-secret-refresh-token',
+    },
+    mockRefresh
+  );
+
+  const state = await auth.checkStoredSessionState();
+
+  assert.equal(refreshCalled, true);
+  assert.equal(state.isExpired, false);
+  assert.equal(state.autoRefreshed, true);
+  assert.ok(state.session);
+  assert.equal(state.session.uuIdentity, '4017-3144-1');
+  assert.equal(state.session.idToken, freshJwt);
 });

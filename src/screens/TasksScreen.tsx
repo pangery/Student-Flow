@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Alert,
   Linking,
@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { cleanSubjectName, deadlineLabel, schoolStateLabel } from '../services/schoolDisplay';
@@ -43,12 +44,17 @@ export function TasksScreen({
   onRefresh,
   isRefreshing = false,
 }: Props) {
-  const subjectChoices = Array.from(new Map(subjects.map(subject => [subject.name, subject])).values());
+  const subjectChoices = useMemo(
+    () => Array.from(new Map(subjects.map((subject) => [subject.name, subject])).values()),
+    [subjects]
+  );
   const theme = useAppTheme();
   const isDark = theme.isDark;
-  const dynamicThemes = getSubjectThemes(isDark);
+  const dynamicThemes = useMemo(() => getSubjectThemes(isDark), [isDark]);
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 900;
 
-  const currentSemester = getSemesterForDate();
+  const currentSemester = useMemo(() => getSemesterForDate(), []);
   const [semesterScope, setSemesterScope] = useState<'current' | 'all'>('current');
   const [filter, setFilter] = useState<TaskFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -56,13 +62,6 @@ export function TasksScreen({
   const [highlightedTaskId, setHighlightedTaskId] = useState<string | null>(
     initialSelectedTaskId ?? null
   );
-
-  // If a task is selected from a notification, ensure it's not filtered out
-  useState(() => {
-    if (initialSelectedTaskId) {
-      setHighlightedTaskId(initialSelectedTaskId);
-    }
-  });
 
   // New task form state
   const [newTitle, setNewTitle] = useState('');
@@ -72,43 +71,47 @@ export function TasksScreen({
   const [newNotes, setNewNotes] = useState('');
 
   // 1. Semester-scoped tasks (hides past semester assignments)
-  const scopedTasks = tasks.filter((t) => {
-    if (semesterScope === 'current') {
-      return isDateInCurrentSemester(t.dueDate, currentSemester);
-    }
-    return true;
-  });
-
-  const doneCount = scopedTasks.filter((task) => task.isCompleted).length;
-  const activeCount = scopedTasks.length - doneCount;
-  const progressPercent = scopedTasks.length ? Math.round((doneCount / scopedTasks.length) * 100) : 0;
-
-  const filteredTasks = scopedTasks
-    .filter((t) => {
-      if (filter === 'active') return !t.isCompleted;
-      if (filter === 'done') return t.isCompleted;
-      return true;
-    })
-    .filter((t) => {
-      if (!searchQuery.trim()) return true;
-      const q = searchQuery.toLowerCase();
-      return (
-        t.title.toLowerCase().includes(q) ||
-        (t.subjectName && t.subjectName.toLowerCase().includes(q)) ||
-        (t.notes && t.notes.toLowerCase().includes(q))
-      );
-    })
-    // Řazení podle data odevzdání (nejbližší termíny nahoře)
-    .sort((a, b) => {
-      // 1. Dokončené úkoly jdou až dolů
-      if (a.isCompleted !== b.isCompleted) {
-        return a.isCompleted ? 1 : -1;
+  const scopedTasks = useMemo(() => {
+    return tasks.filter((t) => {
+      if (semesterScope === 'current') {
+        return isDateInCurrentSemester(t.dueDate, currentSemester);
       }
-      // 2. Řazení podle data vzestupně (nejbližší termín první)
-      const timeA = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
-      const timeB = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
-      return timeA - timeB;
+      return true;
     });
+  }, [tasks, semesterScope, currentSemester]);
+
+  const { doneCount, activeCount, progressPercent } = useMemo(() => {
+    const done = scopedTasks.filter((task) => task.isCompleted).length;
+    const active = scopedTasks.length - done;
+    const pct = scopedTasks.length ? Math.round((done / scopedTasks.length) * 100) : 0;
+    return { doneCount: done, activeCount: active, progressPercent: pct };
+  }, [scopedTasks]);
+
+  const filteredTasks = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return scopedTasks
+      .filter((t) => {
+        if (filter === 'active') return !t.isCompleted;
+        if (filter === 'done') return t.isCompleted;
+        return true;
+      })
+      .filter((t) => {
+        if (!q) return true;
+        return (
+          t.title.toLowerCase().includes(q) ||
+          (t.subjectName && t.subjectName.toLowerCase().includes(q)) ||
+          (t.notes && t.notes.toLowerCase().includes(q))
+        );
+      })
+      .sort((a, b) => {
+        if (a.isCompleted !== b.isCompleted) {
+          return a.isCompleted ? 1 : -1;
+        }
+        const timeA = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
+        const timeB = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
+        return timeA - timeB;
+      });
+  }, [scopedTasks, filter, searchQuery]);
 
   const handleCreateTask = () => {
     if (!newTitle.trim()) {
@@ -454,7 +457,7 @@ export function TasksScreen({
       </View>
 
       {/* Task List */}
-      <View style={styles.taskList}>
+      <View style={[styles.taskList, isDesktop && styles.desktopTasksGrid]}>
         {filteredTasks.length === 0 ? (
           <View
             style={[
@@ -507,6 +510,7 @@ export function TasksScreen({
                 key={task.id}
                 style={[
                   styles.taskCard,
+                  isDesktop && styles.desktopTaskCard,
                   {
                     backgroundColor: isDone
                       ? isDark
@@ -697,15 +701,36 @@ export function TasksScreen({
                       </Text>
                     </View>
 
-                    {!isDone && Number.isFinite(daysLeft) && (
+                    {isDone ? (
                       <View
                         style={[
                           styles.daysLeftBadge,
-                          daysLeft <= 1
+                          {
+                            backgroundColor: isDark ? 'rgba(16,185,129,0.15)' : '#ECFDF5',
+                            borderWidth: 1,
+                            borderColor: isDark ? 'rgba(16,185,129,0.35)' : '#A7F3D0',
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.daysLeftText, { color: isDark ? '#34D399' : '#059669', fontWeight: '800' }]}>
+                          ✓ Hotovo
+                        </Text>
+                      </View>
+                    ) : Number.isFinite(daysLeft) ? (
+                      <View
+                        style={[
+                          styles.daysLeftBadge,
+                          daysLeft < 0
                             ? {
-                                backgroundColor: isDark ? 'rgba(244,63,94,0.15)' : '#FFF1F2',
+                                backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : '#FEF2F2',
                                 borderWidth: 1,
-                                borderColor: isDark ? 'rgba(244,63,94,0.35)' : '#FECDD3',
+                                borderColor: isDark ? 'rgba(239,68,68,0.35)' : '#FECACA',
+                              }
+                            : daysLeft <= 1
+                            ? {
+                                backgroundColor: isDark ? 'rgba(245,158,11,0.15)' : '#FFFBEB',
+                                borderWidth: 1,
+                                borderColor: isDark ? 'rgba(245,158,11,0.35)' : '#FDE68A',
                               }
                             : {
                                 backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9',
@@ -717,13 +742,15 @@ export function TasksScreen({
                         <Text
                           style={[
                             styles.daysLeftText,
-                            daysLeft <= 1
-                              ? { color: isDark ? '#FB7185' : '#E11D48', fontWeight: '800' }
+                            daysLeft < 0
+                              ? { color: '#EF4444', fontWeight: '800' }
+                              : daysLeft <= 1
+                              ? { color: isDark ? '#FBBF24' : '#D97706', fontWeight: '800' }
                               : { color: theme.secondary, fontWeight: '700' },
                           ]}
                         >
                           {daysLeft < 0
-                            ? 'Po termínu'
+                            ? `Po termínu (${Math.abs(daysLeft)}d)`
                             : daysLeft === 0
                             ? 'Dnes!'
                             : daysLeft === 1
@@ -731,7 +758,7 @@ export function TasksScreen({
                             : `Za ${daysLeft} dní`}
                         </Text>
                       </View>
-                    )}
+                    ) : null}
                   </View>
                 </View>
 
@@ -1048,6 +1075,11 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 20,
   },
+  desktopTasksGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 14,
+  },
   taskCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1058,6 +1090,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     elevation: 2,
     gap: 12,
+  },
+  desktopTaskCard: {
+    width: '48.8%',
+    flexGrow: 1,
+    minWidth: 320,
   },
   checkCircle: {
     flexShrink: 0,

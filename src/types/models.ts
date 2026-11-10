@@ -84,6 +84,7 @@ export type Textbook = {
   updatedAt: string;
   sizeKb: number;
   chapters: TextbookChapter[];
+  isEnrolled?: boolean;
 };
 
 export type CachedTextbookMeta = {
