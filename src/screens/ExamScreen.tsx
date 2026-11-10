@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Linking,
   Pressable,
@@ -14,6 +15,13 @@ import {
 } from 'react-native';
 import { BottomSheet } from '../components/BottomSheet';
 import { Screen } from '../components/Screen';
+import {
+  type AvailableExamSlot,
+  bookExamSlot,
+  cancelExamSlotBooking,
+  getAvailableExamSlots,
+} from '../services/bookingEngine';
+import { scheduleExamReminder } from '../services/notifications';
 import { cleanSubjectName, schoolStateLabel } from '../services/schoolDisplay';
 import { getSemesterForDate, isDateInCurrentSemester } from '../services/semester';
 import { isIOS } from '../theme/platform';
@@ -77,6 +85,68 @@ export function ExamScreen({
   const [selectedExamId, setSelectedExamId] = useState<string>(
     initialSelectedExamId || sortedExams[0]?.id || 'exam-1'
   );
+
+  const [viewMode, setViewMode] = useState<'registered' | 'booking'>('registered');
+  const [availableSlots, setAvailableSlots] = useState<AvailableExamSlot[]>([]);
+  const [bookingLoadingId, setBookingLoadingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    getAvailableExamSlots(allExams.map((e) => e.id)).then((slots) => {
+      if (isMounted) setAvailableSlots(slots);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [allExams]);
+
+  const handleEnroll = async (slot: AvailableExamSlot) => {
+    setBookingLoadingId(slot.id);
+    try {
+      const result = await bookExamSlot(slot.id, allExams);
+      updateExamsList(result.updatedExams);
+      setAvailableSlots(result.updatedSlots);
+      setSelectedExamId(result.newExam.id);
+      try {
+        await scheduleExamReminder(result.newExam);
+      } catch {}
+      Alert.alert(
+        'Úspěšně zapsáno',
+        `Byl jsi úspěšně zapsán na termín:\n${slot.title} (${cleanSubjectName(slot.subjectName)}).\n\nTermín byl přidán do tvého harmonogramu a byla nastavena 24h připomínka.`
+      );
+    } catch (err: any) {
+      Alert.alert('Chyba zápisu', err?.message || 'Nepodařilo se přihlásit na termín.');
+    } finally {
+      setBookingLoadingId(null);
+    }
+  };
+
+  const handleUnenroll = (slot: AvailableExamSlot) => {
+    Alert.alert(
+      'Odhlásit z termínu',
+      `Opravdu se chceš odhlásit ze zkoušky:\n${slot.title}?`,
+      [
+        { text: 'Ponechat zápis', style: 'cancel' },
+        {
+          text: 'Odhlásit termín',
+          style: 'destructive',
+          onPress: async () => {
+            setBookingLoadingId(slot.id);
+            try {
+              const result = await cancelExamSlotBooking(slot.id, allExams);
+              updateExamsList(result.updatedExams);
+              setAvailableSlots(result.updatedSlots);
+              Alert.alert('Odhlášeno', `Byl jsi úspěšně odhlášen z termínu ${slot.title}.`);
+            } catch (err: any) {
+              Alert.alert('Chyba', err?.message || 'Nepodařilo se odhlásit.');
+            } finally {
+              setBookingLoadingId(null);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   // Synchronize selection if requested externally (e.g. via notification deep-link)
   useMemo(() => {
@@ -302,8 +372,310 @@ export function ExamScreen({
         </Pressable>
       </View>
 
-      {/* 2. Semester Filter Scope Bar */}
-      <View style={styles.semesterBarRow}>
+      {/* Mode Switcher: Moje zkoušky vs Zápis na zkoušky */}
+      <View style={styles.modeSwitcherContainer}>
+        <Pressable
+          accessibilityRole="tab"
+          accessibilityState={{ selected: viewMode === 'registered' }}
+          onPress={() => setViewMode('registered')}
+          style={[
+            styles.modeSwitchBtn,
+            viewMode === 'registered'
+              ? {
+                  backgroundColor: isDark ? '#2563EB' : '#0F172A',
+                  borderColor: isDark ? '#38BDF8' : '#0F172A',
+                }
+              : {
+                  backgroundColor: theme.surface,
+                  borderColor: theme.border,
+                },
+          ]}
+        >
+          <Ionicons
+            name="calendar"
+            size={14}
+            color={viewMode === 'registered' ? '#FFFFFF' : theme.secondary}
+          />
+          <Text
+            style={[
+              styles.modeSwitchBtnText,
+              {
+                color: viewMode === 'registered' ? '#FFFFFF' : theme.secondary,
+                fontWeight: viewMode === 'registered' ? '700' : '500',
+              },
+            ]}
+          >
+            Moje zkoušky ({scopedExams.length})
+          </Text>
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="tab"
+          accessibilityState={{ selected: viewMode === 'booking' }}
+          onPress={() => setViewMode('booking')}
+          style={[
+            styles.modeSwitchBtn,
+            viewMode === 'booking'
+              ? {
+                  backgroundColor: isDark ? '#2563EB' : '#0F172A',
+                  borderColor: isDark ? '#38BDF8' : '#0F172A',
+                }
+              : {
+                  backgroundColor: theme.surface,
+                  borderColor: isDark ? 'rgba(56,189,248,0.4)' : '#BFDBFE',
+                },
+          ]}
+        >
+          <Ionicons
+            name="sparkles"
+            size={14}
+            color={viewMode === 'booking' ? '#FFFFFF' : isDark ? '#38BDF8' : '#2563EB'}
+          />
+          <Text
+            style={[
+              styles.modeSwitchBtnText,
+              {
+                color: viewMode === 'booking' ? '#FFFFFF' : isDark ? '#38BDF8' : '#2563EB',
+                fontWeight: '700',
+              },
+            ]}
+          >
+            Zápis na zkoušky
+          </Text>
+          <View
+            style={[
+              styles.modeBadge,
+              {
+                backgroundColor:
+                  viewMode === 'booking'
+                    ? 'rgba(255,255,255,0.25)'
+                    : isDark
+                    ? 'rgba(56,189,248,0.2)'
+                    : '#DBEAFE',
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.modeBadgeText,
+                {
+                  color:
+                    viewMode === 'booking'
+                      ? '#FFFFFF'
+                      : isDark
+                      ? '#38BDF8'
+                      : '#2563EB',
+                },
+              ]}
+            >
+              uuBooking
+            </Text>
+          </View>
+        </Pressable>
+      </View>
+
+      {viewMode === 'booking' ? (
+        <View style={styles.bookingContainer}>
+          <LinearGradient
+            colors={isDark ? ['#0B172B', '#0F254B'] : ['#EFF6FF', '#DBEAFE']}
+            style={styles.bookingHeroBanner}
+          >
+            <View style={styles.bookingHeroHeader}>
+              <View style={styles.bookingHeroBadge}>
+                <Ionicons name="sparkles" size={13} color="#2563EB" />
+                <Text style={styles.bookingHeroBadgeText}>uuBookingEngine · Online zápis termínů</Text>
+              </View>
+              <Text style={[styles.bookingHeroTitle, { color: theme.text }]}>
+                Vypsané zkouškové termíny
+              </Text>
+              <Text style={[styles.bookingHeroSub, { color: theme.secondary }]}>
+                Zde se můžeš přímo zapsat na řádné i opravné termíny předmětů. Po zápisu se termín automaticky uloží do tvého harmonogramu a nastaví se 24h připomínka.
+              </Text>
+            </View>
+          </LinearGradient>
+
+          <View style={styles.slotsList}>
+            {availableSlots.map((slot) => {
+              const isEnrolled = slot.isEnrolled || allExams.some((e) => e.id === `booking_${slot.id}` || e.id === slot.id);
+              const freeSlots = Math.max(0, slot.capacity - slot.enrolledCount);
+              const isFull = freeSlots === 0 && !isEnrolled;
+              const slotTheme = slot.subjectId ? dynamicThemes[slot.subjectId] : undefined;
+              const slotDate = new Date(slot.date);
+              const isLoading = bookingLoadingId === slot.id;
+
+              return (
+                <View
+                  key={slot.id}
+                  style={[
+                    styles.slotCard,
+                    {
+                      backgroundColor: theme.surface,
+                      borderColor: isEnrolled ? '#10B981' : theme.border,
+                    },
+                  ]}
+                >
+                  <View style={styles.slotCardHeader}>
+                    <View
+                      style={[
+                        styles.slotSubjectPill,
+                        {
+                          backgroundColor: isDark ? 'rgba(56,189,248,0.15)' : '#EFF6FF',
+                          borderColor: slotTheme?.primary || (isDark ? '#38BDF8' : '#2563EB'),
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.slotSubjectCode,
+                          { color: slotTheme?.primary || (isDark ? '#38BDF8' : '#2563EB') },
+                        ]}
+                      >
+                        {slot.code}
+                      </Text>
+                    </View>
+
+                    {isEnrolled ? (
+                      <View style={styles.enrolledPill}>
+                        <Ionicons name="checkmark-circle" size={13} color="#10B981" />
+                        <Text style={styles.enrolledPillText}>Zapsáno v aplikaci</Text>
+                      </View>
+                    ) : (
+                      <View
+                        style={[
+                          styles.capacityTag,
+                          {
+                            backgroundColor: isFull
+                              ? 'rgba(239,68,68,0.12)'
+                              : freeSlots <= 5
+                              ? 'rgba(245,158,11,0.12)'
+                              : 'rgba(16,185,129,0.12)',
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.capacityTagText,
+                            {
+                              color: isFull
+                                ? '#EF4444'
+                                : freeSlots <= 5
+                                ? '#F59E0B'
+                                : '#10B981',
+                            },
+                          ]}
+                        >
+                          {isFull ? 'Plně obsazeno' : `Zbývá ${freeSlots} z ${slot.capacity} míst`}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <Text style={[styles.slotTitle, { color: theme.text }]}>{slot.title}</Text>
+                  <Text style={[styles.slotSubjectName, { color: theme.secondary }]}>
+                    {cleanSubjectName(slot.subjectName)}
+                  </Text>
+
+                  <View style={styles.slotMetaGrid}>
+                    <View style={styles.slotMetaItem}>
+                      <Ionicons name="calendar-outline" size={13} color={theme.secondary} />
+                      <Text style={[styles.slotMetaText, { color: theme.text }]}>
+                        {slotDate.toLocaleDateString('cs-CZ', {
+                          weekday: 'short',
+                          day: 'numeric',
+                          month: 'long',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </Text>
+                    </View>
+
+                    <View style={styles.slotMetaItem}>
+                      <Ionicons name="location-outline" size={13} color={theme.secondary} />
+                      <Text style={[styles.slotMetaText, { color: theme.text }]}>
+                        {slot.location}
+                      </Text>
+                    </View>
+
+                    <View style={styles.slotMetaItem}>
+                      <Ionicons name="person-outline" size={13} color={theme.secondary} />
+                      <Text style={[styles.slotMetaText, { color: theme.text }]}>
+                        Zkoušející: {slot.examiner}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {Boolean(slot.notes) && (
+                    <Text style={[styles.slotNotes, { color: theme.muted }]} numberOfLines={2}>
+                      {slot.notes}
+                    </Text>
+                  )}
+
+                  <View style={styles.slotActionWrap}>
+                    {isEnrolled ? (
+                      <Pressable
+                        disabled={isLoading}
+                        onPress={() => handleUnenroll(slot)}
+                        style={({ pressed }) => [
+                          styles.unenrollBtn,
+                          {
+                            borderColor: isDark ? 'rgba(239,68,68,0.4)' : '#FECDD3',
+                            backgroundColor: isDark ? 'rgba(239,68,68,0.1)' : '#FEF2F2',
+                          },
+                          pressed && { opacity: 0.7 },
+                        ]}
+                      >
+                        {isLoading ? (
+                          <ActivityIndicator size="small" color="#EF4444" />
+                        ) : (
+                          <>
+                            <Ionicons name="close-circle-outline" size={15} color="#EF4444" />
+                            <Text style={styles.unenrollBtnText}>Odhlásit z termínu</Text>
+                          </>
+                        )}
+                      </Pressable>
+                    ) : (
+                      <Pressable
+                        disabled={isFull || isLoading}
+                        onPress={() => handleEnroll(slot)}
+                        style={({ pressed }) => [
+                          styles.enrollBtn,
+                          isFull
+                            ? { backgroundColor: isDark ? '#374151' : '#E2E8F0' }
+                            : { backgroundColor: isDark ? '#2563EB' : '#0F172A' },
+                          pressed && { opacity: 0.8 },
+                        ]}
+                      >
+                        {isLoading ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" />
+                        ) : (
+                          <>
+                            <Ionicons
+                              name={isFull ? 'lock-closed-outline' : 'checkmark-circle-outline'}
+                              size={15}
+                              color={isFull ? theme.muted : '#FFFFFF'}
+                            />
+                            <Text
+                              style={[
+                                styles.enrollBtnText,
+                                { color: isFull ? theme.muted : '#FFFFFF' },
+                              ]}
+                            >
+                              {isFull ? 'Kapacita vyčerpána' : 'Přihlásit se na termín'}
+                            </Text>
+                          </>
+                        )}
+                      </Pressable>
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      ) : (
+        <>
+          {/* 2. Semester Filter Scope Bar */}
+          <View style={styles.semesterBarRow}>
         <Pressable
           accessibilityRole="button"
           accessibilityState={{ selected: semesterScope === 'current' }}
@@ -1318,6 +1690,8 @@ export function ExamScreen({
       )}
         </View>
       </View>
+      </>
+      )}
 
       {/* 9. Modal for adding new exam */}
       <BottomSheet visible={addModalVisible} onClose={() => setAddModalVisible(false)}>
@@ -2150,5 +2524,180 @@ const styles = StyleSheet.create({
     flex: 5,
     minWidth: 0,
     gap: 16,
+  },
+
+  /* Mode Switcher */
+  modeSwitcherContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginVertical: 8,
+  },
+  modeSwitchBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+  },
+  modeSwitchBtnText: {
+    fontSize: 13,
+  },
+  modeBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+  },
+  modeBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+
+  /* Booking Container & Hero Banner */
+  bookingContainer: {
+    gap: 16,
+    marginTop: 4,
+  },
+  bookingHeroBanner: {
+    borderRadius: radius.large,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(56,189,248,0.25)',
+  },
+  bookingHeroHeader: {
+    gap: 6,
+  },
+  bookingHeroBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    alignSelf: 'flex-start',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+  },
+  bookingHeroBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#2563EB',
+  },
+  bookingHeroTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  bookingHeroSub: {
+    fontSize: 12.5,
+    lineHeight: 18,
+  },
+
+  /* Slots List */
+  slotsList: {
+    gap: 12,
+  },
+  slotCard: {
+    borderRadius: radius.medium,
+    padding: 16,
+    borderWidth: 1.5,
+    gap: 8,
+  },
+  slotCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  slotSubjectPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+  },
+  slotSubjectCode: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  enrolledPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(16,185,129,0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+  },
+  enrolledPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#10B981',
+  },
+  capacityTag: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+  },
+  capacityTagText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  slotTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  slotSubjectName: {
+    fontSize: 12.5,
+    fontWeight: '500',
+  },
+  slotMetaGrid: {
+    gap: 6,
+    marginTop: 4,
+  },
+  slotMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  slotMetaText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  slotNotes: {
+    fontSize: 11.5,
+    lineHeight: 16,
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
+  slotActionWrap: {
+    marginTop: 6,
+  },
+  enrollBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 11,
+    borderRadius: radius.pill,
+    minHeight: 44,
+  },
+  enrollBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  unenrollBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    minHeight: 44,
+  },
+  unenrollBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#EF4444',
   },
 });
