@@ -44,9 +44,11 @@ function startLocalStaticServer(distDir) {
         const parsedUrl = new URL(req.url, 'http://127.0.0.1');
         let pathname = decodeURIComponent(parsedUrl.pathname);
         if (pathname === '/') pathname = '/index.html';
-        const filePath = path.join(distDir, pathname);
+        const normalizedDist = path.resolve(distDir);
+        const filePath = path.resolve(normalizedDist, '.' + pathname);
+        const rel = path.relative(normalizedDist, filePath);
 
-        if (!filePath.startsWith(distDir)) {
+        if (rel.startsWith('..') || path.isAbsolute(rel)) {
           res.statusCode = 403;
           return res.end('Forbidden');
         }
@@ -169,7 +171,7 @@ async function createWindow() {
     mainWindow.loadURL('http://localhost:8081');
   } else {
     if (!localServerPort) {
-      const distDir = path.join(__dirname, '../dist');
+      const distDir = path.resolve(__dirname, '../dist');
       const { port, server } = await startLocalStaticServer(distDir);
       localServerPort = port;
       localStaticServer = server;
