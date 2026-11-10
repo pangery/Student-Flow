@@ -28,10 +28,7 @@ const screenshotPath = path.join(outputDir, screenshotName);
 try {
   execSync(`xcrun simctl io booted screenshot "${screenshotPath}"`, { stdio: 'ignore' });
 } catch {
-  const scratchScreenshot = path.join(projectRoot, '..', '..', 'brain', '73c86a0d-1dac-4d73-b3cd-f8c1a42145c7', 'scratch', 'ios_simulator_optimized.png');
-  if (fs.existsSync(scratchScreenshot)) {
-    fs.copyFileSync(scratchScreenshot, screenshotPath);
-  }
+  // Pokud simulator nebezi, zachova se stavajici snimek pokud jiz existuje
 }
 
 // 100% bezpečná verze bez jakéhokoliv tagu table
