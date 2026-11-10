@@ -22,8 +22,10 @@ Kompletní technická a architekturní dokumentace je k dispozici v souboru **[D
   - Zvláštní označení pro distanční písemky zadané formou assignmentu.
   - Filtrace semestru vylučující minulé ročníky z aktivních přehledů.
 - **Zkoušky a rezervace (uuBookingEngine):**
-  - Přehled vypsaných termínů zkoušek a zarezervovaných časů.
-  - Interaktivní checklisty přípravy na zkoušku s ukládáním průběhu.
+  - Interaktivní zápis a odhlášení ze zkouškových termínů na 1 klik přímo z aplikace.
+  - Živé sledování kapacity termínů a volných míst v reálném čase.
+  - Automatické naplánování systémové 24hodinové notifikace po úspěšném zápisu.
+  - Osobní harmonogram zapsaných zkoušek, odpočet dnů a interaktivní checklisty přípravy.
 - **Offline knihovna a studijní materiály (uuBookKit):**
   - Katalog učebnic organizovaný podle jednotlivých předmětů.
   - Funkce rychlého stažení materiálů předmětu pro offline studium.
@@ -72,7 +74,7 @@ npm run dist:all      # Sestaví distribuční balíčky pro všechny platformy
 
 ## Testy a statická analýza
 
-Sada 34 automatických integračních a jednotkových testů běžících v nativním testovacím runneru Node.js:
+Sada 37 automatických integračních a jednotkových testů běžících v nativním testovacím runneru Node.js:
 
 ```bash
 npm test

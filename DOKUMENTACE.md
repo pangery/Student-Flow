@@ -7,7 +7,7 @@ Informace o projektu:
 - **Cílové platformy:** iOS, Android, macOS, Windows, Linux, Web
 - **Použitý stack:** React Native 0.88, Expo SDK 58, TypeScript 5.8, Electron 34, Node.js 22 LTS
 - **Zdrojový kód:** [github.com/pangery/Student-Flow](https://github.com/pangery/Student-Flow)
-- **Stav testů:** 34/34 úspěšných testů (Node.js test runner), 0 chyb v TypeScript kompilátoru
+- **Stav testů:** 37/37 úspěšných testů (Node.js test runner), 0 chyb v TypeScript kompilátoru
 
 ---
 
@@ -200,9 +200,13 @@ Načítání rozvrhu probíhá ve dvou krocích:
 - **Zadání a odevzdávárny:** Command `assignment/list` načítá oficiální termíny a stavy hodnocení. Aplikace respektuje autoritativní stav ze serveru – otevření zadání studentem neoznačuje úkol za splněný; úkol je označen jako hotový pouze na základě skutečného záznamu o odevzdání.
 - **Průběžné testy:** Command `step/list` vrací jednotlivé kroky kurzu. Záznamy s parametrem `kind === 'test'` jsou automaticky klasifikovány jako testy a zobrazeny s příslušným označením.
 
-### 4.4 Rezervace zkoušek (uuBookingEngine)
-- **Certifikační zkoušky:** Command `certificationExam/list` načítá vypsané zkušební termíny.
-- **Ústní zkoušky:** Command `booking/list` z rezervačního systému eviduje zarezervované časy u zkoušejících.
+### 4.4 Rezervace zkoušek a interaktivní zápis (uuBookingEngine)
+Modul `src/services/bookingEngine.ts` zajišťuje integraci s univerzitním rezervačním systémem pro zkouškové termíny:
+- **Přehled vypsaných termínů:** Funkce `getAvailableExamSlots()` načítá aktuálně vypsané termíny řádných i opravných zkoušek pro předměty studenta. Každý termín nese metadata o zkoušejícím, přesné učebně, datu a celkové kapacitě míst (`capacity`, `enrolledCount`).
+- **Zápis na zkoušku na 1 klik:** Funkce `bookExamSlot()` provádí registraci studenta. Pokud je nakonfigurováno ostré API `BOOKING_ENGINE_BASE_URI`, volá příkaz `booking/create`. Zároveň provede zápis do lokální perzistentní vrstvy (`studentflow.booking.slots.v1`), navýší počet obsazených míst a zařadí zkoušku mezi aktivní položky studenta s vygenerovaným checklistem přípravy.
+- **Automatické naplánování notifikace:** Při úspěšném zápisu na termín je okamžitě vyvolána funkce `scheduleExamReminder(exam)`, která do systémového plánovače notifikací zařízení zaregistruje 24hodinové a ranní připomenutí.
+- **Odhlášení z termínu:** Funkce `cancelExamSlotBooking()` zruší rezervaci studenta (vzdáleně přes `booking/cancel` i lokálně), uvolní kapacitu pro ostatní studenty a odstraní naplánované notifikace.
+- **Uživatelské rozhraní:** V komponentě `ExamScreen.tsx` je implementován segmentový přepínač mezi *„Moje zkoušky“* (osobní harmonogram a checklisty) a *„Zápis na zkoušky (uuBooking)“* (živý přehled volných míst s barevným odlišením kapacity).
 
 ### 4.5 Semestrální logika a časová okna
 Aby se v rozhraní nezobrazovaly staré záznamy z minulých ročníků, modul `src/services/semester.ts` rozděluje akademický rok:
@@ -299,6 +303,7 @@ export type Textbook = {
 | `AsyncStorage` | `studentflow.textbooks.meta.${identity}` | Metadata a hashe stažených učebnic |
 | `AsyncStorage` | `studentflow.textbook.${bookId}.${identity}` | Serializovaný obsah konkrétní učebnice |
 | `AsyncStorage` | `studentflow.reading.progress.${bookId}` | Uložená pozice a velikost písma ve čtečce |
+| `AsyncStorage` | `studentflow.booking.slots.v1` | Stav a obsazenost zkouškových slotů pro zápis |
 
 ---
 
@@ -321,7 +326,7 @@ Součástí repozitáře je inspekční server v `telemetry-dashboard/server.mjs
 
 ## 8. Automatizované testování
 
-Projekt obsahuje ucelenou sadu 34 unit testů využívajících nativní testovací modul Node.js (`node:test`):
+Projekt obsahuje ucelenou sadu 37 unit testů využívajících nativní testovací modul Node.js (`node:test`):
 
 ```bash
 npm test
@@ -329,11 +334,12 @@ npm test
 
 ### Přehled testovaných modulů:
 1. `tests/authExpiry.test.cjs` (4 testy): Expirace tokenů, zachování dat při vypršení, bezchybná obnova přes `refresh_token`.
-2. `tests/bookkit.test.cjs` (4 testy): Parsování URL a AWID parametrů, generování stromu kapitol, filtrace uu5 XML značek.
-3. `tests/notifications.test.cjs` (7 testů): Plánování ranního souhrnu rozvrhu, filtrace semestru, směrování notifikačních kliknutí.
-4. `tests/studyEngine.test.cjs` (12 testů): Autoritativní validace odevzdání prací, deduplikace zkouškových termínů, odolnost vůči výpadkům sítě.
-5. `tests/textbookSecurity.test.cjs` (5 testů): FNV-1a kontrolní součet se solí, detekce porušení integrity souborů, automatické generování sylabu.
-6. `tests/widgetBridge.test.cjs` (2 testy): Generování a serializace datových snapshotů pro widgety.
+2. `tests/bookingEngine.test.cjs` (3 testy): Načítání vypsaných termínů, validace kapacity a zápis na zkoušku, odhlášení z termínu.
+3. `tests/bookkit.test.cjs` (4 testy): Parsování URL a AWID parametrů, generování stromu kapitol, filtrace uu5 XML značek.
+4. `tests/notifications.test.cjs` (7 testů): Plánování ranního souhrnu rozvrhu, filtrace semestru, směrování notifikačních kliknutí.
+5. `tests/studyEngine.test.cjs` (12 testů): Autoritativní validace odevzdání prací, deduplikace zkouškových termínů, odolnost vůči výpadkům sítě.
+6. `tests/textbookSecurity.test.cjs` (5 testů): FNV-1a kontrolní součet se solí, detekce porušení integrity souborů, automatické generování sylabu.
+7. `tests/widgetBridge.test.cjs` (2 testy): Generování a serializace datových snapshotů pro widgety.
 
 Statická typová kontrola:
 ```bash

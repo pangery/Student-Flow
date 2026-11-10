@@ -12,7 +12,7 @@ function loadTsModule(file) {
     }
   ).outputText;
   const mod = { exports: {} };
-  new Function('require', 'module', 'exports', output)(() => {}, mod, mod.exports);
+  new Function('require', 'module', 'exports', output)(() => { }, mod, mod.exports);
   return mod.exports;
 }
 
@@ -97,3 +97,4 @@ test('cancelExamSlotBooking unenrolls student, decreases count, and removes from
   const sweSlot = updatedSlots.find((s) => s.id === 'slot-swe-1');
   assert.equal(sweSlot.isEnrolled, false);
 });
+
