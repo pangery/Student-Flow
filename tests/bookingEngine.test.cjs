@@ -115,3 +115,21 @@ test('isRealExamOrTest strictly separates genuine exams from ordinary tasks and 
   assert.equal(isRealExamOrTest({ title: 'Cvičení k tématu – Git branching' }), false);
 });
 
+test('isPureTask ensures Tasks screen only loads pure tasks and excludes tests/exams', () => {
+  const { isPureTask } = loadTsModule('schoolDisplay.ts');
+
+  // Pure tasks must pass
+  assert.equal(isPureTask({ title: 'Odevzdat návrh mobilní aplikace' }), true);
+  assert.equal(isPureTask({ title: 'Semestrální práce – databázové schéma' }), true);
+  assert.equal(isPureTask({ title: 'Příprava na prezentaci projektu' }), true);
+  assert.equal(isPureTask({ title: 'Domácí úkol č. 1' }), true);
+
+  // Exams, tests, and distance exams must be excluded from Tasks
+  assert.equal(isPureTask({ title: 'Zkouška – Vývoj mobilních aplikací' }), false);
+  assert.equal(isPureTask({ title: 'Zápočtový test – Databázové systémy' }), false);
+  assert.equal(isPureTask({ title: 'Předtermín – Softwarové inženýrství' }), false);
+  assert.equal(isPureTask({ title: 'Písemný test z databází', isDistanceExam: true }), false);
+  assert.equal(isPureTask({ title: 'Distanční zkouška', examType: 'distance' }), false);
+  assert.equal(isPureTask({ title: 'Certifikační zkouška', examType: 'certification' }), false);
+});
+

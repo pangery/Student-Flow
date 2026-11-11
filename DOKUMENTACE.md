@@ -330,7 +330,7 @@ Součástí repozitáře je inspekční server v `telemetry-dashboard/server.mjs
 
 ## 8. Automatizované testování
 
-Projekt obsahuje ucelenou sadu 38 unit testů využívajících nativní testovací modul Node.js (`node:test`):
+Projekt obsahuje ucelenou sadu 39 unit testů využívajících nativní testovací modul Node.js (`node:test`):
 
 ```bash
 npm test
@@ -338,7 +338,7 @@ npm test
 
 ### Přehled testovaných modulů:
 1. `tests/authExpiry.test.cjs` (4 testy): Expirace tokenů, zachování dat při vypršení, bezchybná obnova přes `refresh_token`.
-2. `tests/bookingEngine.test.cjs` (4 testy): Načítání vypsaných termínů, validace kapacity a zápis na zkoušku, odhlášení z termínu, striktní oddělení testů/zkoušek od samostudia a úkolů (`isRealExamOrTest`).
+2. `tests/bookingEngine.test.cjs` (5 testů): Načítání vypsaných termínů, validace kapacity a zápis na zkoušku, odhlášení z termínu, striktní oddělení testů/zkoušek (`isRealExamOrTest`) a úkolů (`isPureTask`).
 3. `tests/bookkit.test.cjs` (4 testy): Parsování URL a AWID parametrů, generování stromu kapitol, filtrace uu5 XML značek.
 4. `tests/notifications.test.cjs` (7 testů): Plánování ranního souhrnu rozvrhu, filtrace semestru, směrování notifikačních kliknutí.
 5. `tests/studyEngine.test.cjs` (12 testů): Autoritativní validace odevzdání prací, deduplikace zkouškových termínů, odolnost vůči výpadkům sítě.

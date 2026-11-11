@@ -11,7 +11,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { cleanSubjectName, deadlineLabel, schoolStateLabel } from '../services/schoolDisplay';
+import { cleanSubjectName, deadlineLabel, isPureTask, schoolStateLabel } from '../services/schoolDisplay';
 import { getSemesterForDate, isDateInCurrentSemester } from '../services/semester';
 import { BottomSheet } from '../components/BottomSheet';
 import { Screen } from '../components/Screen';
@@ -71,14 +71,16 @@ export function TasksScreen({
   const [newDaysAhead, setNewDaysAhead] = useState<number>(2);
   const [newNotes, setNewNotes] = useState('');
 
-  // 1. Semester-scoped tasks (hides past semester assignments)
+  // 1. Semester-scoped pure tasks (striktně načítá JEN úkoly, vylučuje zkoušky a testy)
   const scopedTasks = useMemo(() => {
-    return tasks.filter((t) => {
-      if (semesterScope === 'current') {
-        return isDateInCurrentSemester(t.dueDate, currentSemester);
-      }
-      return true;
-    });
+    return tasks
+      .filter(isPureTask)
+      .filter((t) => {
+        if (semesterScope === 'current') {
+          return isDateInCurrentSemester(t.dueDate, currentSemester);
+        }
+        return true;
+      });
   }, [tasks, semesterScope, currentSemester]);
 
   // Dostupné předměty s počítadlem úkolů pro filtrování
@@ -356,14 +358,14 @@ export function TasksScreen({
 
         <View style={styles.overviewInfo}>
           <Text style={[styles.overviewTitle, { color: theme.text }]}>
-            {doneCount === tasks.length && tasks.length > 0
+            {doneCount === scopedTasks.length && scopedTasks.length > 0
               ? 'Všechny úkoly máš hotové! 🎉'
               : 'Plň úkoly krok po kroku'}
           </Text>
           <Text style={[styles.overviewSubtitle, { color: theme.secondary }]}>
             {activeCount === 0
               ? 'Vše splněno, užij si volný čas nebo otevři učebnice.'
-              : `Zbývá ti ${activeCount} z ${tasks.length} studijních úkolů.`}
+              : `Zbývá ti ${activeCount} z ${scopedTasks.length} studijních úkolů.`}
           </Text>
 
           {/* Mini progress bar */}
@@ -436,7 +438,7 @@ export function TasksScreen({
               { color: filter === 'all' ? '#FFFFFF' : theme.secondary },
             ]}
           >
-            Všechny ({tasks.length})
+            Všechny ({scopedTasks.length})
           </Text>
         </Pressable>
 
@@ -804,25 +806,6 @@ export function TasksScreen({
                           ]}
                         >
                           {cleanSubjectName(sTheme?.code || task.subjectName)}
-                        </Text>
-                      </View>
-                    )}
-
-
-                    {/* Distance exam badge */}
-                    {task.isDistanceExam && !isDone && (
-                      <View
-                        style={[
-                          styles.distanceExamBadge,
-                          {
-                            backgroundColor: isDark ? 'rgba(245,158,11,0.15)' : '#FFFBEB',
-                            borderColor: isDark ? 'rgba(245,158,11,0.35)' : '#FDE68A',
-                          },
-                        ]}
-                      >
-                        <Ionicons name="school" size={11} color="#F59E0B" />
-                        <Text style={[styles.distanceExamBadgeText, { color: '#F59E0B' }]}>
-                          Zkouškový test
                         </Text>
                       </View>
                     )}

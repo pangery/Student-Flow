@@ -45,3 +45,30 @@ export function isRealExamOrTest(item: {
   if (isSelfStudy && !hasExamKeyword) return false;
   return hasExamKeyword || Boolean(item.location) || Boolean(item.checklist?.length);
 }
+
+export function isPureTask(item: {
+  title?: string;
+  examType?: string;
+  isDistanceExam?: boolean;
+}): boolean {
+  if (item.isDistanceExam) return false;
+  if (
+    item.examType === 'certification' ||
+    item.examType === 'test' ||
+    item.examType === 'oral' ||
+    item.examType === 'distance'
+  ) {
+    return false;
+  }
+  const t = (item.title || '').toLowerCase();
+  if (/(zkoušk|zkousk|předtermín|predtermin|obhajob|certifik|kolokv)/i.test(t)) {
+    return false;
+  }
+  if (/(?:^|\b|\s|_|-)(?:test|exam)(?:$|\b|\s|_|-)/i.test(t)) {
+    return false;
+  }
+  if (/zápočtov[ýáé]/i.test(t)) {
+    return false;
+  }
+  return true;
+}
