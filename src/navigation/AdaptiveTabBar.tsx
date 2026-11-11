@@ -206,7 +206,6 @@ export function AdaptiveTabBar({ state, descriptors, navigation }: BottomTabBarP
           <View style={styles.navRow}>
             {state.routes.map((route, index) => {
               const isFocused = state.index === index;
-              const isCenter = index === 2; // Prostřední tab: Učebnice (Skripta)
               const { options } = descriptors[route.key] ?? {};
               const label =
                 options?.tabBarLabel !== undefined
@@ -228,75 +227,6 @@ export function AdaptiveTabBar({ state, descriptors, navigation }: BottomTabBarP
 
               const iconName = getIOSIcon(route.name, isFocused);
 
-              // Prostřední akční tlačítko vystupující nahoru z výřezu
-              if (isCenter) {
-                return (
-                  <View key={route.key} style={styles.centerItemContainer}>
-                    <Pressable
-                      accessibilityRole="tab"
-                      accessibilityState={{ selected: isFocused }}
-                      accessibilityLabel={label}
-                      onPress={onPress}
-                      hitSlop={8}
-                      style={({ pressed }) => [
-                        styles.centerPressable,
-                        pressed && { transform: [{ scale: 0.92 }] },
-                      ]}
-                    >
-                      {/* Vnější prstenec výřezu (Notch ring) */}
-                      <View
-                        style={[
-                          styles.centerNotchRing,
-                          {
-                            backgroundColor: isDark ? '#060A13' : '#F1F5F9',
-                            borderColor: isDark
-                              ? 'rgba(56, 189, 248, 0.4)'
-                              : 'rgba(37, 99, 235, 0.3)',
-                          },
-                        ]}
-                      >
-                        <LinearGradient
-                          colors={
-                            isFocused
-                              ? ['#38BDF8', '#0284C7']
-                              : ['#2563EB', '#1E40AF']
-                          }
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 1 }}
-                          style={[
-                            styles.centerElevatedButton,
-                            {
-                              shadowColor: isFocused ? '#38BDF8' : '#0284C7',
-                            },
-                          ]}
-                        >
-                          <Ionicons
-                            name={iconName}
-                            size={24}
-                            color="#FFFFFF"
-                          />
-                        </LinearGradient>
-                      </View>
-
-                      <Text
-                        numberOfLines={1}
-                        maxFontSizeMultiplier={1.2}
-                        style={[
-                          styles.centerLabel,
-                          {
-                            color: isFocused ? '#FFFFFF' : 'rgba(255, 255, 255, 0.85)',
-                            fontWeight: isFocused ? '800' : '600',
-                          },
-                        ]}
-                      >
-                        {label}
-                      </Text>
-                    </Pressable>
-                  </View>
-                );
-              }
-
-              // Běžné tab položky
               return (
                 <Pressable
                   key={route.key}
@@ -306,14 +236,15 @@ export function AdaptiveTabBar({ state, descriptors, navigation }: BottomTabBarP
                   onPress={onPress}
                   style={({ pressed }) => [
                     styles.navTabItem,
-                    pressed && { opacity: 0.7, transform: [{ scale: 0.94 }] },
+                    isFocused && styles.navTabItemActive,
+                    pressed && { opacity: 0.75, transform: [{ scale: 0.95 }] },
                   ]}
                 >
                   <View style={styles.navIconWrapper}>
                     <Ionicons
                       name={iconName}
                       size={21}
-                      color={isFocused ? '#FFFFFF' : 'rgba(219, 234, 254, 0.7)'}
+                      color={isFocused ? '#FFFFFF' : 'rgba(219, 234, 254, 0.72)'}
                     />
                     {isFocused && <View style={styles.activeGlowDot} />}
                   </View>
@@ -357,7 +288,7 @@ function getAndroidIcon(name: string, focused: boolean): keyof typeof Ionicons.g
 }
 
 const styles = StyleSheet.create({
-  // Moderní plovoucí modrý navbar s centrálním výřezem (notch)
+  // Moderní plovoucí safírový dock (Royal Blue Floating Dock)
   floatingContainer: {
     position: 'absolute',
     left: 14,
@@ -368,26 +299,26 @@ const styles = StyleSheet.create({
   },
   floatingBarWrap: {
     shadowColor: '#1D4ED8',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.38,
-    shadowRadius: 20,
-    elevation: 16,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
+    elevation: 14,
   },
   floatingBarGradient: {
-    borderRadius: 32,
-    borderWidth: 1.5,
-    paddingTop: 8,
-    paddingBottom: 10,
+    borderRadius: 28,
+    borderWidth: 1.2,
+    paddingTop: 6,
+    paddingBottom: 8,
     paddingHorizontal: 6,
-    overflow: 'visible',
+    overflow: 'hidden',
   },
   topGlossLine: {
     position: 'absolute',
     top: 0,
-    left: 36,
-    right: 36,
+    left: 28,
+    right: 28,
     height: 1.5,
-    backgroundColor: 'rgba(255, 255, 255, 0.4)',
+    backgroundColor: 'rgba(255, 255, 255, 0.45)',
     borderRadius: 1,
   },
   navRow: {
@@ -397,15 +328,21 @@ const styles = StyleSheet.create({
   },
   navTabItem: {
     flex: 1,
-    minHeight: 46,
+    minHeight: 48,
+    borderRadius: 18,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 3,
   },
+  navTabItemActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+  },
   navIconWrapper: {
     alignItems: 'center',
     justifyContent: 'center',
-    height: 26,
+    height: 24,
   },
   activeGlowDot: {
     position: 'absolute',
@@ -421,40 +358,6 @@ const styles = StyleSheet.create({
   navLabel: {
     fontSize: 10,
     letterSpacing: 0.1,
-  },
-  centerItemContainer: {
-    flex: 1.1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  centerPressable: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: -24,
-  },
-  centerNotchRing: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    borderWidth: 3,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  centerElevatedButton: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.45,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  centerLabel: {
-    fontSize: 10,
-    letterSpacing: 0.1,
-    marginTop: 2,
   },
 
   // iOS Floating Dark Glass Island

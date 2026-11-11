@@ -48,7 +48,7 @@ export function ExamScreen({
   onOpenSourceUrl,
 }: Props) {
   const subjectChoices = useMemo(
-    () => Array.from(new Map(subjects.map((s) => [s.name, s])).values()),
+    () => Array.from(new Map(subjects.map((s) => [cleanSubjectName(s.name).toLowerCase(), s])).values()),
     [subjects]
   );
 
@@ -79,18 +79,92 @@ export function ExamScreen({
     });
   }, [realExams, semesterScope, currentSemester]);
 
+  const [viewMode, setViewMode] = useState<'registered' | 'booking'>('registered');
+  const [availableSlots, setAvailableSlots] = useState<AvailableExamSlot[]>([]);
+  const [bookingLoadingId, setBookingLoadingId] = useState<string | null>(null);
+
+  // Dostupné předměty zkoušek s počtem termínů pro horizontální čipy (striktně bez duplicit)
+  const availableExamSubjects = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; count: number; matchedSubjectIds: Set<string> }>();
+
+    for (const ex of realExamsInScope) {
+      const canonicalName = cleanSubjectName(ex.subjectName || 'Ostatní');
+      const normKey = canonicalName.toLowerCase();
+      const existing = map.get(normKey);
+      if (existing) {
+        existing.count += 1;
+        if (ex.subjectId) existing.matchedSubjectIds.add(ex.subjectId);
+        if (ex.subjectName) existing.matchedSubjectIds.add(ex.subjectName);
+      } else {
+        const ids = new Set<string>();
+        if (ex.subjectId) ids.add(ex.subjectId);
+        if (ex.subjectName) ids.add(ex.subjectName);
+        map.set(normKey, {
+          id: normKey,
+          name: canonicalName,
+          count: 1,
+          matchedSubjectIds: ids,
+        });
+      }
+    }
+
+    for (const slot of availableSlots) {
+      const canonicalName = cleanSubjectName(slot.subjectName || 'Ostatní');
+      const normKey = canonicalName.toLowerCase();
+      const existing = map.get(normKey);
+      if (existing) {
+        if (slot.subjectId) existing.matchedSubjectIds.add(slot.subjectId);
+        if (slot.subjectName) existing.matchedSubjectIds.add(slot.subjectName);
+      } else {
+        const ids = new Set<string>();
+        if (slot.subjectId) ids.add(slot.subjectId);
+        if (slot.subjectName) ids.add(slot.subjectName);
+        map.set(normKey, {
+          id: normKey,
+          name: canonicalName,
+          count: 0,
+          matchedSubjectIds: ids,
+        });
+      }
+    }
+
+    for (const sub of subjects) {
+      const canonicalName = cleanSubjectName(sub.name);
+      const normKey = canonicalName.toLowerCase();
+      const existing = map.get(normKey);
+      if (existing) {
+        if (sub.id) existing.matchedSubjectIds.add(sub.id);
+        if (sub.name) existing.matchedSubjectIds.add(sub.name);
+      } else {
+        const ids = new Set<string>();
+        if (sub.id) ids.add(sub.id);
+        if (sub.name) ids.add(sub.name);
+        map.set(normKey, {
+          id: normKey,
+          name: canonicalName,
+          count: 0,
+          matchedSubjectIds: ids,
+        });
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  }, [realExamsInScope, availableSlots, subjects]);
+
   // Filtrování podle aktuálního semestru a vybraného předmětu
   const scopedExams = useMemo(() => {
     return realExamsInScope.filter((ex) => {
       if (!selectedSubjectId) return true;
-      const sName = cleanSubjectName(ex.subjectName || '');
-      return (
-        ex.subjectId === selectedSubjectId ||
-        ex.subjectName === selectedSubjectId ||
-        sName.toLowerCase() === selectedSubjectId.toLowerCase()
-      );
+      const canonical = cleanSubjectName(ex.subjectName || 'Ostatní').toLowerCase();
+      if (canonical === selectedSubjectId.toLowerCase()) return true;
+      const matched = availableExamSubjects.find((s) => s.id === selectedSubjectId);
+      if (matched) {
+        if (ex.subjectId && matched.matchedSubjectIds.has(ex.subjectId)) return true;
+        if (ex.subjectName && matched.matchedSubjectIds.has(ex.subjectName)) return true;
+      }
+      return false;
     });
-  }, [realExamsInScope, selectedSubjectId]);
+  }, [realExamsInScope, selectedSubjectId, availableExamSubjects]);
 
   // Seřazení chronologicky podle termínu
   const sortedExams = useMemo(() => {
@@ -114,58 +188,30 @@ export function ExamScreen({
     }
   }, [sortedExams, selectedExamId]);
 
-  const [viewMode, setViewMode] = useState<'registered' | 'booking'>('registered');
-  const [availableSlots, setAvailableSlots] = useState<AvailableExamSlot[]>([]);
-  const [bookingLoadingId, setBookingLoadingId] = useState<string | null>(null);
-
   // Filtrované sloty uuBookingEngine podle zvoleného předmětu
   const filteredSlots = useMemo(() => {
     if (!selectedSubjectId) return availableSlots;
     return availableSlots.filter((slot) => {
-      const sName = cleanSubjectName(slot.subjectName || '');
-      return (
-        slot.subjectId === selectedSubjectId ||
-        slot.subjectName === selectedSubjectId ||
-        sName.toLowerCase() === selectedSubjectId.toLowerCase()
-      );
+      const canonical = cleanSubjectName(slot.subjectName || 'Ostatní').toLowerCase();
+      if (canonical === selectedSubjectId.toLowerCase()) return true;
+      const matched = availableExamSubjects.find((s) => s.id === selectedSubjectId);
+      if (matched) {
+        if (slot.subjectId && matched.matchedSubjectIds.has(slot.subjectId)) return true;
+        if (slot.subjectName && matched.matchedSubjectIds.has(slot.subjectName)) return true;
+      }
+      return false;
     });
-  }, [availableSlots, selectedSubjectId]);
-
-  // Dostupné předměty zkoušek s počtem termínů pro horizontální čipy
-  const availableExamSubjects = useMemo(() => {
-    const map = new Map<string, { id: string; name: string; count: number }>();
-
-    for (const ex of realExamsInScope) {
-      const sId = ex.subjectId || ex.subjectName || 'other';
-      const sName = cleanSubjectName(ex.subjectName || 'Ostatní');
-      const existing = map.get(sId);
-      if (existing) {
-        existing.count += 1;
-      } else {
-        map.set(sId, { id: sId, name: sName, count: 1 });
-      }
-    }
-
-    for (const slot of availableSlots) {
-      const sId = slot.subjectId || slot.subjectName || 'other';
-      const sName = cleanSubjectName(slot.subjectName || 'Ostatní');
-      if (!map.has(sId)) {
-        map.set(sId, { id: sId, name: sName, count: 0 });
-      }
-    }
-
-    return Array.from(map.values()).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
-  }, [realExamsInScope, availableSlots]);
+  }, [availableSlots, selectedSubjectId, availableExamSubjects]);
 
   useEffect(() => {
     let isMounted = true;
-    getAvailableExamSlots(allExams.map((e) => e.id)).then((slots) => {
+    getAvailableExamSlots(allExams.map((e) => e.id), subjects).then((slots) => {
       if (isMounted) setAvailableSlots(slots);
     });
     return () => {
       isMounted = false;
     };
-  }, [allExams]);
+  }, [allExams, subjects]);
 
   const handleEnroll = async (slot: AvailableExamSlot) => {
     setBookingLoadingId(slot.id);

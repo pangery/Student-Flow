@@ -15,12 +15,34 @@ export function deadlineLabel(value: string): string {
 }
 
 export function cleanSubjectName(name?: string): string {
-  if (!name) return 'Předmět';
-  return name
-    .replace(/\s*-\s*\d{4}\s+(zima|léto|ZS|LS).*$/i, '')
-    .replace(/\s*-\s*\d{4}.*$/i, '')
-    .replace(/\s*\([^)]*\)\s*$/, '')
-    .trim();
+  if (!name || !name.trim()) return 'Předmět';
+  let cleaned = name.trim();
+
+  // 1. Odstranění předpon typů výuky (např. "Přednáška: ", "Cvičení - ", "Seminář - ")
+  cleaned = cleaned.replace(
+    /^(?:přednáška|prednaska|cvičení|cviceni|seminář|seminar|konzultace|workshop)\s*[:\-\/–—]\s*/i,
+    ''
+  );
+
+  // 2. Odstranění ročníků a semestrů (např. " - 2024/2025 ZS", " - 2026 LS", " - ZS 2025/2026")
+  cleaned = cleaned.replace(/\s*-\s*\d{4}\s*(?:\/|\-)\s*\d{4}.*$/i, '');
+  cleaned = cleaned.replace(/\s*-\s*\d{4}\s+(?:zima|léto|leto|ZS|LS).*$/i, '');
+  cleaned = cleaned.replace(/\s*-\s*\d{4}.*$/i, '');
+  cleaned = cleaned.replace(/\s*-\s*(?:ZS|LS)\s*\d{2,4}.*$/i, '');
+
+  // 3. Odstranění přípon výuky (např. " - přednáška", " - cvičení 1", " / cvičení", " - seminář")
+  cleaned = cleaned.replace(
+    /\s*(?:[-–—\/]|,)\s*(?:přednáška|prednaska|cvičení|cviceni|seminář|seminar|konzultace|workshop|lecture|lab)(?:\s+\d+)?\s*$/i,
+    ''
+  );
+
+  // 4. Odstranění závorek na konci (např. "(Přednáška)", "(Cvičení)", "(P301)", "(Online)", "(ZS 2025)")
+  cleaned = cleaned.replace(/\s*\([^)]*\)\s*$/, '');
+
+  // 5. Odstranění přebytečných oddělovačů na konci
+  cleaned = cleaned.replace(/[\s\-\/–—]+$/, '').trim();
+
+  return cleaned || 'Předmět';
 }
 
 export function isRealExamOrTest(item: {

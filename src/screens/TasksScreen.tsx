@@ -45,7 +45,7 @@ export function TasksScreen({
   isRefreshing = false,
 }: Props) {
   const subjectChoices = useMemo(
-    () => Array.from(new Map(subjects.map((subject) => [subject.name, subject])).values()),
+    () => Array.from(new Map(subjects.map((subject) => [cleanSubjectName(subject.name).toLowerCase(), subject])).values()),
     [subjects]
   );
   const theme = useAppTheme();
@@ -83,29 +83,49 @@ export function TasksScreen({
       });
   }, [tasks, semesterScope, currentSemester]);
 
-  // Dostupné předměty s počítadlem úkolů pro filtrování
+  // Dostupné předměty s počítadlem úkolů pro filtrování (striktně deduplikované podle normalizovaného názvu)
   const availableSubjects = useMemo(() => {
-    const map = new Map<string, { id: string; name: string; count: number }>();
+    const map = new Map<string, { id: string; name: string; count: number; matchedSubjectIds: Set<string> }>();
 
     for (const t of scopedTasks) {
-      const sId = t.subjectId || t.subjectName || 'other';
-      const sName = cleanSubjectName(t.subjectName || 'Ostatní');
-      const existing = map.get(sId);
+      const canonicalName = cleanSubjectName(t.subjectName || 'Ostatní');
+      const normKey = canonicalName.toLowerCase();
+      const existing = map.get(normKey);
       if (existing) {
         existing.count += 1;
+        if (t.subjectId) existing.matchedSubjectIds.add(t.subjectId);
+        if (t.subjectName) existing.matchedSubjectIds.add(t.subjectName);
       } else {
-        map.set(sId, { id: sId, name: sName, count: 1 });
+        const ids = new Set<string>();
+        if (t.subjectId) ids.add(t.subjectId);
+        if (t.subjectName) ids.add(t.subjectName);
+        map.set(normKey, {
+          id: normKey,
+          name: canonicalName,
+          count: 1,
+          matchedSubjectIds: ids,
+        });
       }
     }
 
     // Doplnit předměty ze seznamu, které zatím nemají úkoly
     for (const sub of subjects) {
-      const sName = cleanSubjectName(sub.name);
-      const alreadyPresent = Array.from(map.values()).some(
-        (entry) => entry.id === sub.id || entry.name.toLowerCase() === sName.toLowerCase()
-      );
-      if (!alreadyPresent) {
-        map.set(sub.id, { id: sub.id, name: sName, count: 0 });
+      const canonicalName = cleanSubjectName(sub.name);
+      const normKey = canonicalName.toLowerCase();
+      const existing = map.get(normKey);
+      if (existing) {
+        if (sub.id) existing.matchedSubjectIds.add(sub.id);
+        if (sub.name) existing.matchedSubjectIds.add(sub.name);
+      } else {
+        const ids = new Set<string>();
+        if (sub.id) ids.add(sub.id);
+        if (sub.name) ids.add(sub.name);
+        map.set(normKey, {
+          id: normKey,
+          name: canonicalName,
+          count: 0,
+          matchedSubjectIds: ids,
+        });
       }
     }
 
@@ -124,12 +144,14 @@ export function TasksScreen({
     return scopedTasks
       .filter((t) => {
         if (!selectedSubjectId) return true;
-        const sName = cleanSubjectName(t.subjectName || '');
-        return (
-          t.subjectId === selectedSubjectId ||
-          t.subjectName === selectedSubjectId ||
-          sName.toLowerCase() === selectedSubjectId.toLowerCase()
-        );
+        const canonical = cleanSubjectName(t.subjectName || 'Ostatní').toLowerCase();
+        if (canonical === selectedSubjectId.toLowerCase()) return true;
+        const matched = availableSubjects.find((s) => s.id === selectedSubjectId);
+        if (matched) {
+          if (t.subjectId && matched.matchedSubjectIds.has(t.subjectId)) return true;
+          if (t.subjectName && matched.matchedSubjectIds.has(t.subjectName)) return true;
+        }
+        return false;
       })
       .filter((t) => {
         if (filter === 'active') return !t.isCompleted;
@@ -152,7 +174,7 @@ export function TasksScreen({
         const timeB = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
         return timeA - timeB;
       });
-  }, [scopedTasks, selectedSubjectId, filter, searchQuery]);
+  }, [scopedTasks, selectedSubjectId, availableSubjects, filter, searchQuery]);
 
   const handleCreateTask = () => {
     if (!newTitle.trim()) {

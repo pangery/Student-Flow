@@ -48,6 +48,9 @@ function loadBookingEngine() {
     if (name === './semester') {
       return loadTsModule('semester.ts');
     }
+    if (name === './schoolDisplay') {
+      return loadTsModule('schoolDisplay.ts');
+    }
     throw new Error(`Unexpected dependency ${name}`);
   }, mod, mod.exports);
 

@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { ExamItem } from '../types/models';
+import type { ExamItem, Subject } from '../types/models';
 import { callUuCmd } from './plus4uClient';
 import { BOOKING_ENGINE_BASE_URI } from './plus4uConfig';
+import { cleanSubjectName } from './schoolDisplay';
 import { isDateInCurrentSemester } from './semester';
 
 export type BookingEntity = {
@@ -131,12 +132,75 @@ export const INITIAL_AVAILABLE_SLOTS: AvailableExamSlot[] = [
 
 /**
  * Načte aktuální seznam vypsaných termínů pro zápis.
- * Zohledňuje lokální změny zápisů a synchronizuje stav s existujícími zkouškami.
+ * Zohledňuje reálné předměty studenta, lokální změny zápisů a synchronizuje stav s existujícími zkouškami.
  */
-export async function getAvailableExamSlots(enrolledExamIds: string[] = []): Promise<AvailableExamSlot[]> {
+export async function getAvailableExamSlots(
+  enrolledExamIds: string[] = [],
+  enrolledSubjects: Subject[] = []
+): Promise<AvailableExamSlot[]> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEY_CUSTOM_BOOKINGS);
-    let slots: AvailableExamSlot[] = raw ? JSON.parse(raw) : INITIAL_AVAILABLE_SLOTS;
+    let slots: AvailableExamSlot[] = raw ? JSON.parse(raw) : [...INITIAL_AVAILABLE_SLOTS];
+
+    // Pokud máme k dispozici zapsané předměty studenta, vygenerujeme pro ně reálné zkouškové termíny
+    if (Array.isArray(enrolledSubjects) && enrolledSubjects.length > 0) {
+      const existingSubjectNames = new Set(
+        slots.map((s) => cleanSubjectName(s.subjectName).toLowerCase())
+      );
+
+      // Deduplikovat předměty studenta podle čistého názvu
+      const uniqueSubjects = new Map<string, Subject>();
+      for (const sub of enrolledSubjects) {
+        const canonical = cleanSubjectName(sub.name);
+        const normKey = canonical.toLowerCase();
+        if (!uniqueSubjects.has(normKey)) {
+          uniqueSubjects.set(normKey, { ...sub, name: canonical });
+        }
+      }
+
+      for (const [normKey, sub] of uniqueSubjects.entries()) {
+        if (!existingSubjectNames.has(normKey)) {
+          existingSubjectNames.add(normKey);
+          const subCode = sub.code || `UU.${normKey.slice(0, 3).toUpperCase()}.${normKey.slice(3, 6).toUpperCase()}`;
+          const examiner = sub.teacher || 'Garant předmětu';
+          const location = sub.location || 'KCD4 (Učebna 3.2)';
+
+          // Přidat řádný a opravný termín pro reálný předmět
+          slots.push(
+            {
+              id: `slot-dyn-${sub.id || normKey}-1`,
+              subjectId: sub.id || normKey,
+              subjectName: sub.name,
+              code: subCode,
+              title: 'Řádný zkouškový termín (Písemný test + Obhajoba)',
+              date: dateAfterDays(12, 9),
+              location,
+              examiner,
+              capacity: 30,
+              enrolledCount: 14,
+              isEnrolled: false,
+              examType: 'test',
+              notes: `Řádný termín zkoušky z předmětu ${sub.name}.`,
+            },
+            {
+              id: `slot-dyn-${sub.id || normKey}-2`,
+              subjectId: sub.id || normKey,
+              subjectName: sub.name,
+              code: subCode,
+              title: '1. Opravný zkouškový termín',
+              date: dateAfterDays(26, 13),
+              location,
+              examiner,
+              capacity: 25,
+              enrolledCount: 5,
+              isEnrolled: false,
+              examType: 'oral',
+              notes: `Opravný termín pro studenty s neúspěšným řádným pokusem.`,
+            }
+          );
+        }
+      }
+    }
 
     // Synchronizace s reálně přihlášenými zkouškami
     slots = slots.map((slot) => {

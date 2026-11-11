@@ -1,5 +1,6 @@
 import { PLUS4U_PEOPLE_BASE_URI } from './plus4uConfig';
 import { callUuCmd } from './plus4uClient';
+import { cleanSubjectName } from './schoolDisplay';
 import type { ExamItem, Subject, TaskItem } from '../types/models';
 
 export type MtInfo = {
@@ -160,6 +161,29 @@ export function parseDiaryRecords(records: RawDiaryRecord[]): ParsedPlus4UData {
       r.tileProps?.lecturer ||
       (r.tileProps?.activity as any)?.teacher;
 
+    // Detekce zkoušky nebo testu v diáři podle metadat Plus4U
+    const isExplicitExam =
+      r.tileProps?.activityStateCode === 'exam' ||
+      r.tileProps?.activityStateCode === 'test' ||
+      (r.tileProps?.activity as any)?.stateName?.toLowerCase().includes('zkouš') ||
+      (r.tileProps?.activity as any)?.code === 'EXAM';
+
+    if (isExplicitExam) {
+      exams.push({
+        id: `diary_exam_${r.id}`,
+        title: rawTitle,
+        subjectId: `diary_${r.id}`,
+        subjectName: cleanSubjectName(rawTitle),
+        date: r.startTime,
+        location,
+        notes: teacher ? `Zkoušející: ${teacher}` : undefined,
+        source: 'unicorn',
+        sourceState: r.tileProps?.activityStateCode || 'scheduled',
+        examType: /ústn|obhaj/i.test(rawTitle) ? 'oral' : 'test',
+        isCompleted: !isNaN(endDate.getTime()) ? endDate.getTime() < Date.now() : false,
+      });
+    }
+
     // C) Předmět v rozvrhu (pokud to má smysluplný čas a spadá do všedního dne)
     const weekday = startDate.getDay() + 1; // 2 = Po ... 6 = Pá
     if (weekday >= 2 && weekday <= 6 && !isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
@@ -236,6 +260,15 @@ export async function syncStudentDataFromPlus4U(
     subjects = diary.subjects;
     rawCount = diary.rawCount;
     diaryLoaded = true;
+
+    // Sloučit zkoušky z uuStudyEngine, uuBookingEngine a z diáře bez duplicit
+    if (diary.exams && diary.exams.length > 0) {
+      for (const de of diary.exams) {
+        if (!studyData.exams.some((e) => e.id === de.id || (e.title === de.title && e.date === de.date))) {
+          studyData.exams.push(de);
+        }
+      }
+    }
   } catch (error) {
     warnings.push(`Rozvrh se nepodařilo obnovit: ${error instanceof Error ? error.message : 'Chyba připojení.'}`);
   }

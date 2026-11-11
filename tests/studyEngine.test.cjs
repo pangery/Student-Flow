@@ -14,6 +14,7 @@ function loadService(file, overrides = {}) {
     if (name === './plus4uConfig') return { STUDY_ENGINE_BASE_URI: 'https://school.example/workspace/' };
     if (name === './telemetry') return { telemetry: { stage() { }, call() { }, dataSynced() { } } };
     if (name === './semester') return loadService('semester.ts');
+    if (name === './schoolDisplay') return loadService('schoolDisplay.ts');
     if (name === './bookingEngine') return { fetchStudentOralExams: async () => [] };
     throw new Error(`Unexpected dependency ${name}`);
   }, mod, mod.exports);
