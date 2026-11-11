@@ -57,6 +57,7 @@ export function TasksScreen({
   const currentSemester = useMemo(() => getSemesterForDate(), []);
   const [semesterScope, setSemesterScope] = useState<'current' | 'all'>('current');
   const [filter, setFilter] = useState<TaskFilter>('all');
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
   const [highlightedTaskId, setHighlightedTaskId] = useState<string | null>(
@@ -80,6 +81,35 @@ export function TasksScreen({
     });
   }, [tasks, semesterScope, currentSemester]);
 
+  // Dostupné předměty s počítadlem úkolů pro filtrování
+  const availableSubjects = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; count: number }>();
+
+    for (const t of scopedTasks) {
+      const sId = t.subjectId || t.subjectName || 'other';
+      const sName = cleanSubjectName(t.subjectName || 'Ostatní');
+      const existing = map.get(sId);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        map.set(sId, { id: sId, name: sName, count: 1 });
+      }
+    }
+
+    // Doplnit předměty ze seznamu, které zatím nemají úkoly
+    for (const sub of subjects) {
+      const sName = cleanSubjectName(sub.name);
+      const alreadyPresent = Array.from(map.values()).some(
+        (entry) => entry.id === sub.id || entry.name.toLowerCase() === sName.toLowerCase()
+      );
+      if (!alreadyPresent) {
+        map.set(sub.id, { id: sub.id, name: sName, count: 0 });
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  }, [scopedTasks, subjects]);
+
   const { doneCount, activeCount, progressPercent } = useMemo(() => {
     const done = scopedTasks.filter((task) => task.isCompleted).length;
     const active = scopedTasks.length - done;
@@ -90,6 +120,15 @@ export function TasksScreen({
   const filteredTasks = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return scopedTasks
+      .filter((t) => {
+        if (!selectedSubjectId) return true;
+        const sName = cleanSubjectName(t.subjectName || '');
+        return (
+          t.subjectId === selectedSubjectId ||
+          t.subjectName === selectedSubjectId ||
+          sName.toLowerCase() === selectedSubjectId.toLowerCase()
+        );
+      })
       .filter((t) => {
         if (filter === 'active') return !t.isCompleted;
         if (filter === 'done') return t.isCompleted;
@@ -111,7 +150,7 @@ export function TasksScreen({
         const timeB = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
         return timeA - timeB;
       });
-  }, [scopedTasks, filter, searchQuery]);
+  }, [scopedTasks, selectedSubjectId, filter, searchQuery]);
 
   const handleCreateTask = () => {
     if (!newTitle.trim()) {
@@ -456,6 +495,161 @@ export function TasksScreen({
         </Pressable>
       </View>
 
+      {/* Subject Filter Bar (filtrování úkolů podle předmětu) */}
+      <View style={styles.subjectFilterScroll}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.subjectFilterContainer}
+        >
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Zobrazit úkoly všech předmětů"
+            onPress={() => setSelectedSubjectId(null)}
+            style={[
+              styles.subjectFilterChip,
+              !selectedSubjectId
+                ? {
+                    backgroundColor: isDark ? '#2563EB' : '#0F172A',
+                    borderColor: isDark ? '#38BDF8' : '#0F172A',
+                  }
+                : {
+                    backgroundColor: theme.surface,
+                    borderColor: theme.border,
+                  },
+            ]}
+          >
+            <Ionicons
+              name="layers-outline"
+              size={13}
+              color={!selectedSubjectId ? '#FFFFFF' : theme.secondary}
+            />
+            <Text
+              style={[
+                styles.subjectFilterChipText,
+                { color: !selectedSubjectId ? '#FFFFFF' : theme.text },
+              ]}
+            >
+              Všechny předměty
+            </Text>
+            <View
+              style={[
+                styles.subjectFilterCount,
+                {
+                  backgroundColor: !selectedSubjectId
+                    ? 'rgba(255,255,255,0.2)'
+                    : isDark
+                    ? 'rgba(255,255,255,0.08)'
+                    : '#F1F5F9',
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.subjectFilterCountText,
+                  { color: !selectedSubjectId ? '#FFFFFF' : theme.secondary },
+                ]}
+              >
+                {scopedTasks.length}
+              </Text>
+            </View>
+          </Pressable>
+
+          {availableSubjects.map((sub) => {
+            const isSelected =
+              selectedSubjectId === sub.id ||
+              selectedSubjectId === sub.name ||
+              (selectedSubjectId && sub.name.toLowerCase() === selectedSubjectId.toLowerCase());
+            const sTheme = dynamicThemes[sub.id];
+            const dotColor = sTheme?.primary || (isDark ? '#38BDF8' : '#2563EB');
+
+            return (
+              <Pressable
+                key={sub.id}
+                accessibilityRole="button"
+                accessibilityLabel={`Filtrovat úkoly předmětu ${sub.name}`}
+                onPress={() => setSelectedSubjectId(isSelected ? null : sub.id)}
+                style={[
+                  styles.subjectFilterChip,
+                  isSelected
+                    ? {
+                        backgroundColor: isDark ? '#1E293B' : '#EFF6FF',
+                        borderColor: isDark ? '#38BDF8' : '#2563EB',
+                      }
+                    : {
+                        backgroundColor: theme.surface,
+                        borderColor: theme.border,
+                      },
+                ]}
+              >
+                <View style={[styles.subjectFilterDot, { backgroundColor: dotColor }]} />
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.subjectFilterChipText,
+                    {
+                      color: isSelected
+                        ? isDark
+                          ? '#38BDF8'
+                          : '#2563EB'
+                        : theme.text,
+                      fontWeight: isSelected ? '700' : '500',
+                    },
+                  ]}
+                >
+                  {sub.name}
+                </Text>
+                <View
+                  style={[
+                    styles.subjectFilterCount,
+                    {
+                      backgroundColor: isSelected
+                        ? isDark
+                          ? 'rgba(56,189,248,0.2)'
+                          : '#DBEAFE'
+                        : isDark
+                        ? 'rgba(255,255,255,0.08)'
+                        : '#F1F5F9',
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.subjectFilterCountText,
+                      {
+                        color: isSelected
+                          ? isDark
+                            ? '#38BDF8'
+                            : '#2563EB'
+                          : theme.secondary,
+                      },
+                    ]}
+                  >
+                    {sub.count}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* Informace o plánovaných oznámeních k deadlinům */}
+      <View
+        style={[
+          styles.notifInfoBanner,
+          {
+            backgroundColor: isDark ? 'rgba(56, 189, 248, 0.08)' : '#F0F9FF',
+            borderColor: isDark ? 'rgba(56, 189, 248, 0.25)' : '#BAE6FD',
+          },
+        ]}
+      >
+        <Ionicons name="notifications" size={13} color={isDark ? '#38BDF8' : '#0284C7'} />
+        <Text style={[styles.notifInfoText, { color: isDark ? '#BAE6FD' : '#0369A1' }]}>
+          Připomínky termínů: StudentFlow ti automaticky odešle oznámení 24 hodin před každým deadlinem.
+        </Text>
+      </View>
+
       {/* Task List */}
       <View style={[styles.taskList, isDesktop && styles.desktopTasksGrid]}>
         {filteredTasks.length === 0 ? (
@@ -759,6 +953,32 @@ export function TasksScreen({
                         </Text>
                       </View>
                     ) : null}
+
+                    {!isDone && (
+                      <View
+                        style={[
+                          styles.notifBadge,
+                          {
+                            backgroundColor: isDark ? 'rgba(16,185,129,0.12)' : '#ECFDF5',
+                            borderColor: isDark ? 'rgba(16,185,129,0.3)' : '#A7F3D0',
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          name="notifications-outline"
+                          size={11}
+                          color={isDark ? '#34D399' : '#059669'}
+                        />
+                        <Text
+                          style={[
+                            styles.notifBadgeText,
+                            { color: isDark ? '#34D399' : '#059669' },
+                          ]}
+                        >
+                          Notifikace 24h
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 </View>
 
@@ -1070,6 +1290,59 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  subjectFilterScroll: {
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  subjectFilterContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 2,
+  },
+  subjectFilterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 36,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+  },
+  subjectFilterDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  subjectFilterChipText: {
+    fontSize: 12,
+    maxWidth: 160,
+  },
+  subjectFilterCount: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: radius.pill,
+  },
+  subjectFilterCountText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  notifInfoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.medium,
+    borderWidth: 1,
+    marginTop: 4,
+  },
+  notifInfoText: {
+    fontSize: 12,
+    flex: 1,
+    lineHeight: 16,
+  },
   taskList: {
     gap: 10,
     marginTop: 4,
@@ -1196,6 +1469,19 @@ const styles = StyleSheet.create({
   },
   daysLeftText: {
     fontSize: 10.5,
+  },
+  notifBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+  },
+  notifBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '700',
   },
   trashBtn: {
     justifyContent: 'center',

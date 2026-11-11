@@ -98,3 +98,20 @@ test('cancelExamSlotBooking unenrolls student, decreases count, and removes from
   assert.equal(sweSlot.isEnrolled, false);
 });
 
+test('isRealExamOrTest strictly separates genuine exams from ordinary tasks and self-study', () => {
+  const { isRealExamOrTest } = loadTsModule('schoolDisplay.ts');
+
+  // Real exams and tests must pass
+  assert.equal(isRealExamOrTest({ title: 'Zkouška – Vývoj mobilních aplikací' }), true);
+  assert.equal(isRealExamOrTest({ title: 'Zápočtový test – Databázové systémy' }), true);
+  assert.equal(isRealExamOrTest({ title: 'Předtermín – Softwarové inženýrství' }), true);
+  assert.equal(isRealExamOrTest({ title: 'Ústní obhajoba projektu', examType: 'oral' }), true);
+  assert.equal(isRealExamOrTest({ title: 'Distanční test', isDistanceExam: true }), true);
+  assert.equal(isRealExamOrTest({ title: 'Certifikační zkouška', examType: 'certification' }), true);
+
+  // Normal tasks, self-study, and assignments must be excluded from exam section
+  assert.equal(isRealExamOrTest({ title: 'Samostudium kapitoly 3' }), false);
+  assert.equal(isRealExamOrTest({ title: 'Domácí úkol č. 2' }), false);
+  assert.equal(isRealExamOrTest({ title: 'Cvičení k tématu – Git branching' }), false);
+});
+

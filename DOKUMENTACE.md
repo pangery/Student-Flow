@@ -198,10 +198,14 @@ Načítání rozvrhu probíhá ve dvou krocích:
 ### 4.3 Úkoly a hodnocení (uuStudyEngine)
 - **Zápisy kurzů:** Command `getStudentStudyGroupsAndCourses` mapuje aktivní studijní skupiny studenta v daném semestru.
 - **Zadání a odevzdávárny:** Command `assignment/list` načítá oficiální termíny a stavy hodnocení. Aplikace respektuje autoritativní stav ze serveru – otevření zadání studentem neoznačuje úkol za splněný; úkol je označen jako hotový pouze na základě skutečného záznamu o odevzdání.
+- **Filtrování podle předmětů:** Na obrazovce `TasksScreen.tsx` je k dispozici horizontální lišta čipů pro rychlé přepínání mezi předměty (např. *Vývoj mobilních aplikací*, *Databázové systémy*, *Frontendové systémy*), včetně počítadel úkolů u každého předmětu.
+- **Oznámení a deadliny:** Každý neuzavřený úkol má na kartě zobrazen termín odevzdání, relativní odpočet dnů a indikátor aktivního systémového upozornění (24 hodin před deadlinem v 18:00).
 - **Průběžné testy:** Command `step/list` vrací jednotlivé kroky kurzu. Záznamy s parametrem `kind === 'test'` jsou automaticky klasifikovány jako testy a zobrazeny s příslušným označením.
 
 ### 4.4 Rezervace zkoušek a interaktivní zápis (uuBookingEngine)
 Modul `src/services/bookingEngine.ts` zajišťuje integraci s univerzitním rezervačním systémem pro zkouškové termíny:
+- **Striktní oddělení zkoušek od běžných úkolů:** Pomocí funkce `isRealExamOrTest()` jsou zkoušky a testy striktně izolovány od běžného samostudia, cvičení a domácích úkolů. Běžné studijní povinnosti patří do sekce Úkoly, zatímco v sekci Zkoušky se zobrazují výhradně termíny zkoušek, zápočtových testů, ústních obhajob a certifikací.
+- **Filtrování zkoušek podle předmětů:** Uživatel může zkoušky i volné termíny filtrovat kliknutím na příslušný předmět v horizontální nabídce.
 - **Přehled vypsaných termínů:** Funkce `getAvailableExamSlots()` načítá aktuálně vypsané termíny řádných i opravných zkoušek pro předměty studenta. Každý termín nese metadata o zkoušejícím, přesné učebně, datu a celkové kapacitě míst (`capacity`, `enrolledCount`).
 - **Zápis na zkoušku na 1 klik:** Funkce `bookExamSlot()` provádí registraci studenta. Pokud je nakonfigurováno ostré API `BOOKING_ENGINE_BASE_URI`, volá příkaz `booking/create`. Zároveň provede zápis do lokální perzistentní vrstvy (`studentflow.booking.slots.v1`), navýší počet obsazených míst a zařadí zkoušku mezi aktivní položky studenta s vygenerovaným checklistem přípravy.
 - **Automatické naplánování notifikace:** Při úspěšném zápisu na termín je okamžitě vyvolána funkce `scheduleExamReminder(exam)`, která do systémového plánovače notifikací zařízení zaregistruje 24hodinové a ranní připomenutí.
@@ -326,7 +330,7 @@ Součástí repozitáře je inspekční server v `telemetry-dashboard/server.mjs
 
 ## 8. Automatizované testování
 
-Projekt obsahuje ucelenou sadu 37 unit testů využívajících nativní testovací modul Node.js (`node:test`):
+Projekt obsahuje ucelenou sadu 38 unit testů využívajících nativní testovací modul Node.js (`node:test`):
 
 ```bash
 npm test
@@ -334,7 +338,7 @@ npm test
 
 ### Přehled testovaných modulů:
 1. `tests/authExpiry.test.cjs` (4 testy): Expirace tokenů, zachování dat při vypršení, bezchybná obnova přes `refresh_token`.
-2. `tests/bookingEngine.test.cjs` (3 testy): Načítání vypsaných termínů, validace kapacity a zápis na zkoušku, odhlášení z termínu.
+2. `tests/bookingEngine.test.cjs` (4 testy): Načítání vypsaných termínů, validace kapacity a zápis na zkoušku, odhlášení z termínu, striktní oddělení testů/zkoušek od samostudia a úkolů (`isRealExamOrTest`).
 3. `tests/bookkit.test.cjs` (4 testy): Parsování URL a AWID parametrů, generování stromu kapitol, filtrace uu5 XML značek.
 4. `tests/notifications.test.cjs` (7 testů): Plánování ranního souhrnu rozvrhu, filtrace semestru, směrování notifikačních kliknutí.
 5. `tests/studyEngine.test.cjs` (12 testů): Autoritativní validace odevzdání prací, deduplikace zkouškových termínů, odolnost vůči výpadkům sítě.

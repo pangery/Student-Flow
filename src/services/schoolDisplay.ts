@@ -22,3 +22,26 @@ export function cleanSubjectName(name?: string): string {
     .replace(/\s*\([^)]*\)\s*$/, '')
     .trim();
 }
+
+export function isRealExamOrTest(item: {
+  title?: string;
+  examType?: string;
+  isDistanceExam?: boolean;
+  location?: string;
+  checklist?: unknown[];
+}): boolean {
+  if (
+    item.examType === 'certification' ||
+    item.examType === 'test' ||
+    item.examType === 'oral' ||
+    item.examType === 'distance'
+  ) {
+    return true;
+  }
+  if (item.isDistanceExam) return true;
+  const t = (item.title || '').toLowerCase();
+  const isSelfStudy = /^(samostudium|domácí úkol|cvičení|assignment)/i.test(t);
+  const hasExamKeyword = /(zkoušk|zkousk|test|zápoč|zapoc|předtermín|predtermin|obhajob|exam|certifik|kolokv)/i.test(t);
+  if (isSelfStudy && !hasExamKeyword) return false;
+  return hasExamKeyword || Boolean(item.location) || Boolean(item.checklist?.length);
+}

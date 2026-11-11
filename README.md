@@ -74,7 +74,7 @@ npm run dist:all      # Sestaví distribuční balíčky pro všechny platformy
 
 ## Testy a statická analýza
 
-Sada 37 automatických integračních a jednotkových testů běžících v nativním testovacím runneru Node.js:
+Sada 38 automatických integračních a jednotkových testů běžících v nativním testovacím runneru Node.js:
 
 ```bash
 npm test

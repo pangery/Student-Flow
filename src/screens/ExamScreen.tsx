@@ -22,7 +22,7 @@ import {
   getAvailableExamSlots,
 } from '../services/bookingEngine';
 import { scheduleExamReminder } from '../services/notifications';
-import { cleanSubjectName, schoolStateLabel } from '../services/schoolDisplay';
+import { cleanSubjectName, isRealExamOrTest, schoolStateLabel } from '../services/schoolDisplay';
 import { getSemesterForDate, isDateInCurrentSemester } from '../services/semester';
 import { isIOS } from '../theme/platform';
 import { getSubjectThemes, radius, spacing, useAppTheme } from '../theme/theme';
@@ -60,18 +60,37 @@ export function ExamScreen({
 
   const currentSemester = useMemo(() => getSemesterForDate(), []);
   const [semesterScope, setSemesterScope] = useState<'current' | 'all'>('current');
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
 
   const allExams = initialExams ?? [];
 
-  // Filtrování podle aktuálního semestru (vyloučí staré zkoušky z minulých semestrů)
-  const scopedExams = useMemo(() => {
-    return allExams.filter((ex) => {
+  // Striktní filtr: Pouze zkoušky a testy (žádné běžné úkoly a samostudium)
+  const realExams = useMemo(() => {
+    return allExams.filter(isRealExamOrTest);
+  }, [allExams]);
+
+  // Všechny reálné zkoušky v semestru (bez filtru předmětu pro celkový rozsah)
+  const realExamsInScope = useMemo(() => {
+    return realExams.filter((ex) => {
       if (semesterScope === 'current') {
         return isDateInCurrentSemester(ex.date, currentSemester);
       }
       return true;
     });
-  }, [allExams, semesterScope, currentSemester]);
+  }, [realExams, semesterScope, currentSemester]);
+
+  // Filtrování podle aktuálního semestru a vybraného předmětu
+  const scopedExams = useMemo(() => {
+    return realExamsInScope.filter((ex) => {
+      if (!selectedSubjectId) return true;
+      const sName = cleanSubjectName(ex.subjectName || '');
+      return (
+        ex.subjectId === selectedSubjectId ||
+        ex.subjectName === selectedSubjectId ||
+        sName.toLowerCase() === selectedSubjectId.toLowerCase()
+      );
+    });
+  }, [realExamsInScope, selectedSubjectId]);
 
   // Seřazení chronologicky podle termínu
   const sortedExams = useMemo(() => {
@@ -86,9 +105,57 @@ export function ExamScreen({
     initialSelectedExamId || sortedExams[0]?.id || 'exam-1'
   );
 
+  // Automatické přepnutí vybrané zkoušky při změně filtru předmětu
+  useEffect(() => {
+    if (sortedExams.length > 0 && !sortedExams.some((e) => e.id === selectedExamId)) {
+      if (sortedExams[0]?.id) {
+        setSelectedExamId(sortedExams[0].id);
+      }
+    }
+  }, [sortedExams, selectedExamId]);
+
   const [viewMode, setViewMode] = useState<'registered' | 'booking'>('registered');
   const [availableSlots, setAvailableSlots] = useState<AvailableExamSlot[]>([]);
   const [bookingLoadingId, setBookingLoadingId] = useState<string | null>(null);
+
+  // Filtrované sloty uuBookingEngine podle zvoleného předmětu
+  const filteredSlots = useMemo(() => {
+    if (!selectedSubjectId) return availableSlots;
+    return availableSlots.filter((slot) => {
+      const sName = cleanSubjectName(slot.subjectName || '');
+      return (
+        slot.subjectId === selectedSubjectId ||
+        slot.subjectName === selectedSubjectId ||
+        sName.toLowerCase() === selectedSubjectId.toLowerCase()
+      );
+    });
+  }, [availableSlots, selectedSubjectId]);
+
+  // Dostupné předměty zkoušek s počtem termínů pro horizontální čipy
+  const availableExamSubjects = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; count: number }>();
+
+    for (const ex of realExamsInScope) {
+      const sId = ex.subjectId || ex.subjectName || 'other';
+      const sName = cleanSubjectName(ex.subjectName || 'Ostatní');
+      const existing = map.get(sId);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        map.set(sId, { id: sId, name: sName, count: 1 });
+      }
+    }
+
+    for (const slot of availableSlots) {
+      const sId = slot.subjectId || slot.subjectName || 'other';
+      const sName = cleanSubjectName(slot.subjectName || 'Ostatní');
+      if (!map.has(sId)) {
+        map.set(sId, { id: sId, name: sName, count: 0 });
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  }, [realExamsInScope, availableSlots]);
 
   useEffect(() => {
     let isMounted = true;
@@ -474,6 +541,145 @@ export function ExamScreen({
         </Pressable>
       </View>
 
+      {/* Horizontální lišta pro filtrování zkoušek podle předmětu */}
+      <View style={styles.subjectFilterScroll}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.subjectFilterContainer}
+        >
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Zobrazit zkoušky všech předmětů"
+            onPress={() => setSelectedSubjectId(null)}
+            style={[
+              styles.subjectFilterChip,
+              !selectedSubjectId
+                ? {
+                    backgroundColor: isDark ? '#2563EB' : '#0F172A',
+                    borderColor: isDark ? '#38BDF8' : '#0F172A',
+                  }
+                : {
+                    backgroundColor: theme.surface,
+                    borderColor: theme.border,
+                  },
+            ]}
+          >
+            <Ionicons
+              name="layers-outline"
+              size={13}
+              color={!selectedSubjectId ? '#FFFFFF' : theme.secondary}
+            />
+            <Text
+              style={[
+                styles.subjectFilterChipText,
+                { color: !selectedSubjectId ? '#FFFFFF' : theme.text },
+              ]}
+            >
+              Všechny zkoušky
+            </Text>
+            <View
+              style={[
+                styles.subjectFilterCount,
+                {
+                  backgroundColor: !selectedSubjectId
+                    ? 'rgba(255,255,255,0.2)'
+                    : isDark
+                    ? 'rgba(255,255,255,0.08)'
+                    : '#F1F5F9',
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.subjectFilterCountText,
+                  { color: !selectedSubjectId ? '#FFFFFF' : theme.secondary },
+                ]}
+              >
+                {viewMode === 'registered' ? realExamsInScope.length : availableSlots.length}
+              </Text>
+            </View>
+          </Pressable>
+
+          {availableExamSubjects.map((sub) => {
+            const isSelected =
+              selectedSubjectId === sub.id ||
+              selectedSubjectId === sub.name ||
+              (selectedSubjectId && sub.name.toLowerCase() === selectedSubjectId.toLowerCase());
+            const sTheme = dynamicThemes[sub.id];
+            const dotColor = sTheme?.primary || (isDark ? '#38BDF8' : '#2563EB');
+
+            return (
+              <Pressable
+                key={sub.id}
+                accessibilityRole="button"
+                accessibilityLabel={`Filtrovat zkoušky předmětu ${sub.name}`}
+                onPress={() => setSelectedSubjectId(isSelected ? null : sub.id)}
+                style={[
+                  styles.subjectFilterChip,
+                  isSelected
+                    ? {
+                        backgroundColor: isDark ? '#1E293B' : '#EFF6FF',
+                        borderColor: isDark ? '#38BDF8' : '#2563EB',
+                      }
+                    : {
+                        backgroundColor: theme.surface,
+                        borderColor: theme.border,
+                      },
+                ]}
+              >
+                <View style={[styles.subjectFilterDot, { backgroundColor: dotColor }]} />
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.subjectFilterChipText,
+                    {
+                      color: isSelected
+                        ? isDark
+                          ? '#38BDF8'
+                          : '#2563EB'
+                        : theme.text,
+                      fontWeight: isSelected ? '700' : '500',
+                    },
+                  ]}
+                >
+                  {sub.name}
+                </Text>
+                <View
+                  style={[
+                    styles.subjectFilterCount,
+                    {
+                      backgroundColor: isSelected
+                        ? isDark
+                          ? 'rgba(56,189,248,0.2)'
+                          : '#DBEAFE'
+                        : isDark
+                        ? 'rgba(255,255,255,0.08)'
+                        : '#F1F5F9',
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.subjectFilterCountText,
+                      {
+                        color: isSelected
+                          ? isDark
+                            ? '#38BDF8'
+                            : '#2563EB'
+                          : theme.secondary,
+                      },
+                    ]}
+                  >
+                    {sub.count}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+
       {viewMode === 'booking' ? (
         <View style={styles.bookingContainer}>
           <LinearGradient
@@ -495,15 +701,60 @@ export function ExamScreen({
           </LinearGradient>
 
           <View style={styles.slotsList}>
-            {availableSlots.map((slot) => {
-              const isEnrolled = slot.isEnrolled || allExams.some((e) => e.id === `booking_${slot.id}` || e.id === slot.id);
-              const freeSlots = Math.max(0, slot.capacity - slot.enrolledCount);
-              const isFull = freeSlots === 0 && !isEnrolled;
-              const slotTheme = slot.subjectId ? dynamicThemes[slot.subjectId] : undefined;
-              const slotDate = new Date(slot.date);
-              const isLoading = bookingLoadingId === slot.id;
+            {filteredSlots.length === 0 ? (
+              <View
+                style={[
+                  styles.emptySlotsCard,
+                  {
+                    backgroundColor: theme.surface,
+                    borderColor: theme.border,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="calendar-clear-outline"
+                  size={32}
+                  color={isDark ? '#38BDF8' : '#2563EB'}
+                />
+                <Text style={[styles.emptySlotsTitle, { color: theme.text }]}>
+                  {selectedSubjectId
+                    ? 'Pro tento předmět nejsou vypsané volné termíny'
+                    : 'Momentálně nejsou vypsané žádné termíny'}
+                </Text>
+                <Text style={[styles.emptySlotsSub, { color: theme.secondary }]}>
+                  {selectedSubjectId
+                    ? 'Zkus vybrat jiný předmět nebo klikni na „Všechny zkoušky“.'
+                    : 'Nové termíny vypisují vyučující v průběhu semestru v uuBookingEngine.'}
+                </Text>
+                {Boolean(selectedSubjectId) && (
+                  <Pressable
+                    onPress={() => setSelectedSubjectId(null)}
+                    style={[
+                      styles.clearFilterBtn,
+                      { backgroundColor: isDark ? 'rgba(56,189,248,0.15)' : '#EFF6FF' },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.clearFilterBtnText,
+                        { color: isDark ? '#38BDF8' : '#2563EB' },
+                      ]}
+                    >
+                      Zobrazit všechny termíny
+                    </Text>
+                  </Pressable>
+                )}
+              </View>
+            ) : (
+              filteredSlots.map((slot) => {
+                const isEnrolled = slot.isEnrolled || allExams.some((e) => e.id === `booking_${slot.id}` || e.id === slot.id);
+                const freeSlots = Math.max(0, slot.capacity - slot.enrolledCount);
+                const isFull = freeSlots === 0 && !isEnrolled;
+                const slotTheme = slot.subjectId ? dynamicThemes[slot.subjectId] : undefined;
+                const slotDate = new Date(slot.date);
+                const isLoading = bookingLoadingId === slot.id;
 
-              return (
+                return (
                 <View
                   key={slot.id}
                   style={[
@@ -669,7 +920,7 @@ export function ExamScreen({
                   </View>
                 </View>
               );
-            })}
+            }))}
           </View>
         </View>
       ) : (
@@ -856,6 +1107,66 @@ export function ExamScreen({
       </View>
 
       {/* 4. Horizontal Exam Switcher Tabs */}
+      {sortedExams.length === 0 && (
+        <View
+          style={[
+            styles.emptySlotsCard,
+            {
+              backgroundColor: theme.surface,
+              borderColor: theme.border,
+              marginVertical: 16,
+            },
+          ]}
+        >
+          <Ionicons
+            name="school-outline"
+            size={36}
+            color={isDark ? '#38BDF8' : '#2563EB'}
+          />
+          <Text style={[styles.emptySlotsTitle, { color: theme.text }]}>
+            {selectedSubjectId
+              ? 'Pro tento předmět nemáš zapsanou zkoušku'
+              : 'Nemáš zapsané žádné zkoušky'}
+          </Text>
+          <Text style={[styles.emptySlotsSub, { color: theme.secondary }]}>
+            {selectedSubjectId
+              ? 'V harmonogramu nemáš žádný termín z tohoto předmětu. Můžeš se na něj přihlásit v záložce Zápis na zkoušky.'
+              : 'Přihlas se na termíny v sekci „Zápis na zkoušky (uuBooking)“ nebo přidej nový termín tlačítkem nahoře.'}
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+            {Boolean(selectedSubjectId) && (
+              <Pressable
+                onPress={() => setSelectedSubjectId(null)}
+                style={[
+                  styles.clearFilterBtn,
+                  { backgroundColor: isDark ? 'rgba(56,189,248,0.15)' : '#EFF6FF' },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.clearFilterBtnText,
+                    { color: isDark ? '#38BDF8' : '#2563EB' },
+                  ]}
+                >
+                  Zobrazit všechny zkoušky
+                </Text>
+              </Pressable>
+            )}
+            <Pressable
+              onPress={() => setViewMode('booking')}
+              style={[
+                styles.clearFilterBtn,
+                { backgroundColor: isDark ? '#2563EB' : '#0F172A' },
+              ]}
+            >
+              <Text style={[styles.clearFilterBtnText, { color: '#FFFFFF' }]}>
+                Zápis na termíny ↗
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
       {sortedExams.length > 0 && (
         <ScrollView
           horizontal
@@ -2552,6 +2863,78 @@ const styles = StyleSheet.create({
   modeBadgeText: {
     fontSize: 10,
     fontWeight: '800',
+  },
+
+  /* Subject Filter Bar */
+  subjectFilterScroll: {
+    marginVertical: 4,
+  },
+  subjectFilterContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 2,
+  },
+  subjectFilterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 36,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+  },
+  subjectFilterDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  subjectFilterChipText: {
+    fontSize: 12,
+    maxWidth: 160,
+  },
+  subjectFilterCount: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: radius.pill,
+  },
+  subjectFilterCountText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+
+  /* Empty Slots & Exams Card */
+  emptySlotsCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    borderRadius: radius.medium,
+    borderWidth: 1,
+    gap: 8,
+    marginVertical: 10,
+  },
+  emptySlotsTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  emptySlotsSub: {
+    fontSize: 12.5,
+    textAlign: 'center',
+    lineHeight: 18,
+    maxWidth: 320,
+  },
+  clearFilterBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clearFilterBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
 
   /* Booking Container & Hero Banner */
