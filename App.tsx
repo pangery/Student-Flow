@@ -548,7 +548,7 @@ export default function App() {
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <NavigationContainer ref={navigationRef} theme={navigationTheme}>
         <Tab.Navigator
-          tabBar={AdaptiveTabBar}
+          tabBar={(props) => <AdaptiveTabBar {...props} />}
           screenOptions={{
             headerShown: false,
             freezeOnBlur: true,

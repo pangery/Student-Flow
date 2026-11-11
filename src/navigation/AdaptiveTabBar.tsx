@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isIOS, isWeb } from '../theme/platform';
 import { colors, radius, useAppTheme } from '../theme/theme';
 
-export const AdaptiveTabBar = memo(function AdaptiveTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+export function AdaptiveTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const theme = useAppTheme();
@@ -344,7 +344,7 @@ export const AdaptiveTabBar = memo(function AdaptiveTabBar({ state, descriptors,
       </View>
     </View>
   );
-});
+}
 
 function getIOSIcon(name: string, focused: boolean): keyof typeof Ionicons.glyphMap {
   if (name === 'Přehled') return focused ? 'grid' : 'grid-outline';
