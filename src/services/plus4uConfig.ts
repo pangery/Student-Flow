@@ -20,7 +20,7 @@ export const OIDC_SCOPE = "openid offline_access https:// http://localhost";
  * Na tuto adresu OIDC server po přihlášení přesměruje.
  * WebView v aplikaci tuto navigaci zachytí dřív, než se načte, a vytáhne z ní ?code=.
  */
-export const REDIRECT_URI = "http://localhost:53682";
+export const REDIRECT_URI = "http://localhost:53682/oidc/callback";
 
 export const APP_CALLBACK_URL = "studentflow://auth";
 
